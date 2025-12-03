@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: zk-attendance-pro
+    env: python
+    region: oregon  # Choose closest to your location: oregon, frankfurt, singapore
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: SUPABASE_URL
+        sync: false  # Set manually in Render dashboard
+      - key: SUPABASE_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: SECRET_KEY
+        generateValue: true  # Auto-generate secure key
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+      - key: ORG_NAME
+        value: My Company
+      - key: ORG_TIMEZONE
+        value: UTC
+      - key: WORK_START_TIME
+        value: "09:00"
+      - key: WORK_END_TIME
+        value: "17:00"
