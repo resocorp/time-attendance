@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZK Attendance Pro - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .card { background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .status-present { background: #10b981; }
+        .status-absent { background: #ef4444; }
+        .status-late { background: #f59e0b; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .timeline-item { position: relative; padding-left: 24px; }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 8px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #667eea;
+        }
+        .timeline-item::after {
+            content: '';
+            position: absolute;
+            left: 5px;
+            top: 20px;
+            width: 2px;
+            height: calc(100% + 8px);
+            background: #e5e7eb;
+        }
+        .timeline-item:last-child::after { display: none; }
+        /* Navigation styles */
+        .nav-link { background: rgba(255,255,255,0.1); }
+        .nav-link:hover { background: rgba(255,255,255,0.25); }
+        .nav-link.active { background: rgba(255,255,255,0.3); font-weight: 600; }
+        /* Stat card trend indicators */
+        .trend-up { color: #10b981; }
+        .trend-down { color: #ef4444; }
+        .trend-neutral { color: #6b7280; }
+        /* Progress bar */
+        .progress-bar { height: 8px; border-radius: 4px; background: #e5e7eb; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+        /* Heatmap cell */
+        .heatmap-cell { width: 24px; height: 24px; border-radius: 4px; font-size: 10px; display: flex; align-items: center; justify-content: center; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navigation -->
+    <nav class="gradient-bg text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <!-- Logo -->
+                <a href="/dashboard" class="flex items-center space-x-3 hover:opacity-90 transition">
+                    <i data-lucide="fingerprint" class="w-8 h-8"></i>
+                    <h1 class="text-xl font-bold">ZK Attendance Pro</h1>
+                </a>
+                
+                <!-- Main Navigation -->
+                <div class="flex items-center space-x-1">
+                    <a href="/dashboard" class="nav-link active flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="/employees" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="users" class="w-4 h-4"></i>
+                        <span>Employees</span>
+                    </a>
+                    <a href="/users" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="user-shield" class="w-4 h-4"></i>
+                        <span>Users</span>
+                    </a>
+                    <a href="/reports" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                        <span>Reports</span>
+                    </a>
+                    <a href="/monitor" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="activity" class="w-4 h-4"></i>
+                        <span>Live Monitor</span>
+                    </a>
+                    <a href="/settings" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="settings" class="w-4 h-4"></i>
+                        <span>Settings</span>
+                    </a>
+                </div>
+                
+                <!-- User Menu -->
+                <div class="flex items-center space-x-3">
+                    <!-- Status Indicator -->
+                    <div id="connection-status" class="flex items-center space-x-2 bg-green-500 px-3 py-1.5 rounded-full text-sm font-medium">
+                        <span class="w-2 h-2 bg-white rounded-full pulse"></span>
+                        <span>Connected</span>
+                    </div>
+                    
+                    <!-- User Dropdown -->
+                    <div class="relative">
+                        <button id="userMenuBtn" class="flex items-center space-x-2 bg-white bg-opacity-10 hover:bg-opacity-20 px-3 py-2 rounded-lg transition">
+                            <i data-lucide="user" class="w-4 h-4"></i>
+                            <span id="username-display" class="font-medium">Loading...</span>
+                            <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                        </button>
+                        
+                        <!-- Dropdown Menu -->
+                        <div id="userMenu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl py-1 z-50">
+                            <div class="px-4 py-2 border-b border-gray-100">
+                                <p class="text-xs text-gray-500">Signed in as</p>
+                                <p id="user-email" class="text-sm font-medium text-gray-800">admin@example.com</p>
+                            </div>
+                            <a href="#" id="profileBtn" class="flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                <i data-lucide="user" class="w-4 h-4"></i>
+                                <span>Profile</span>
+                            </a>
+                            <a href="#" id="changePasswordBtn" class="flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                <i data-lucide="key" class="w-4 h-4"></i>
+                                <span>Change Password</span>
+                            </a>
+                            <div class="border-t border-gray-100 my-1"></div>
+                            <button id="logoutBtn" class="w-full flex items-center space-x-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                                <i data-lucide="log-out" class="w-4 h-4"></i>
+                                <span>Logout</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Date Selector -->
+        <div class="flex items-center justify-between mb-8">
+            <div class="flex items-center space-x-4">
+                <h2 class="text-2xl font-semibold text-gray-800">Dashboard</h2>
+                <input type="date" id="date-selector" class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+            </div>
+            <div class="flex items-center space-x-3">
+                <button onclick="exportReport()" class="flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    <span>Export Report</span>
+                </button>
+                <button onclick="refreshData()" class="flex items-center space-x-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    <span>Refresh</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-2">
+                    <p class="text-gray-500 text-sm">Total Employees</p>
+                    <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                        <i data-lucide="users" class="w-5 h-5 text-blue-600"></i>
+                    </div>
+                </div>
+                <p id="total-employees" class="text-3xl font-bold text-gray-800">-</p>
+                <p class="text-xs text-gray-400 mt-1">Registered in system</p>
+            </div>
+            
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-2">
+                    <p class="text-gray-500 text-sm">Present Today</p>
+                    <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                        <i data-lucide="user-check" class="w-5 h-5 text-green-600"></i>
+                    </div>
+                </div>
+                <div class="flex items-baseline space-x-2">
+                    <p id="present-count" class="text-3xl font-bold text-green-600">-</p>
+                    <span id="attendance-rate" class="text-sm font-medium text-green-500">--%</span>
+                </div>
+                <div class="progress-bar mt-2">
+                    <div id="attendance-progress" class="progress-fill bg-green-500" style="width: 0%"></div>
+                </div>
+            </div>
+            
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-2">
+                    <p class="text-gray-500 text-sm">Absent Today</p>
+                    <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                        <i data-lucide="user-x" class="w-5 h-5 text-red-600"></i>
+                    </div>
+                </div>
+                <p id="absent-count" class="text-3xl font-bold text-red-600">-</p>
+                <p class="text-xs text-gray-400 mt-1">No check-in recorded</p>
+            </div>
+            
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-2">
+                    <p class="text-gray-500 text-sm">Late Arrivals</p>
+                    <div class="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                        <i data-lucide="clock" class="w-5 h-5 text-amber-600"></i>
+                    </div>
+                </div>
+                <div class="flex items-baseline space-x-2">
+                    <p id="late-count" class="text-3xl font-bold text-amber-600">-</p>
+                    <span id="late-rate" class="text-sm font-medium text-amber-500">--%</span>
+                </div>
+                <p class="text-xs text-gray-400 mt-1">After <span id="work-start-display">09:00</span></p>
+            </div>
+            
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-2">
+                    <p class="text-gray-500 text-sm">Total Punches</p>
+                    <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                        <i data-lucide="fingerprint" class="w-5 h-5 text-purple-600"></i>
+                    </div>
+                </div>
+                <p id="total-punches" class="text-3xl font-bold text-purple-600">-</p>
+                <p class="text-xs text-gray-400 mt-1">Check-ins & check-outs</p>
+            </div>
+        </div>
+
+        <!-- Analytics Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+            <!-- Weekly Attendance Chart -->
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-semibold text-gray-800">Weekly Attendance</h3>
+                    <span class="text-xs text-gray-400">Last 7 days</span>
+                </div>
+                <div class="h-40">
+                    <canvas id="weeklyChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Attendance Distribution -->
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-semibold text-gray-800">Today's Distribution</h3>
+                    <span class="text-xs text-gray-400">Status breakdown</span>
+                </div>
+                <div class="h-40 flex items-center justify-center">
+                    <canvas id="distributionChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Punch Time Distribution -->
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-semibold text-gray-800">Arrival Times</h3>
+                    <span class="text-xs text-gray-400">Today's check-ins</span>
+                </div>
+                <div class="h-40">
+                    <canvas id="arrivalChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Key Metrics Row -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="card p-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="trending-up" class="w-5 h-5 text-indigo-600"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">On-Time Rate</p>
+                        <p id="ontime-rate-big" class="text-xl font-bold text-gray-800">--%</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card p-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-cyan-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="clock" class="w-5 h-5 text-cyan-600"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Avg. Arrival</p>
+                        <p id="avg-arrival-big" class="text-xl font-bold text-gray-800">--:--</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card p-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="log-out" class="w-5 h-5 text-orange-600"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Avg. Departure</p>
+                        <p id="avg-departure-big" class="text-xl font-bold text-gray-800">--:--</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card p-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="timer" class="w-5 h-5 text-emerald-600"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Avg. Work Hours</p>
+                        <p id="avg-hours-big" class="text-xl font-bold text-gray-800">-- hrs</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Employee Status List -->
+            <div class="lg:col-span-2">
+                <div class="card">
+                    <div class="p-6 border-b">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-lg font-semibold text-gray-800">Employee Attendance</h3>
+                            <div class="flex items-center space-x-2">
+                                <input type="text" id="search-employee" placeholder="Search..." 
+                                    class="px-3 py-1 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500">
+                                <select id="filter-status" class="px-3 py-1 border rounded-lg text-sm">
+                                    <option value="all">All Status</option>
+                                    <option value="present">Present</option>
+                                    <option value="absent">Absent</option>
+                                    <option value="late">Late</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">First In</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Out</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Hours</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="employee-table" class="divide-y divide-gray-200">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Sidebar -->
+            <div class="space-y-4">
+                <!-- Device Status -->
+                <div class="card p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-semibold text-gray-800">Device Status</h3>
+                        <span class="text-xs text-gray-400">Real-time</span>
+                    </div>
+                    <div id="device-list" class="space-y-2">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Today's Timeline -->
+                <div class="card p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-semibold text-gray-800">Recent Activity</h3>
+                        <span class="text-xs text-gray-400">Live feed</span>
+                    </div>
+                    <div id="activity-timeline" class="space-y-3 max-h-64 overflow-y-auto">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Punch Type Breakdown -->
+                <div class="card p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-semibold text-gray-800">Punch Types</h3>
+                        <span class="text-xs text-gray-400">Today</span>
+                    </div>
+                    <div id="punch-type-breakdown" class="space-y-2">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Top Performers -->
+                <div class="card p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-semibold text-gray-800">Earliest Arrivals</h3>
+                        <i data-lucide="award" class="w-4 h-4 text-amber-500"></i>
+                    </div>
+                    <div id="top-performers" class="space-y-2">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        // Configuration
+        const WORK_START = '09:00';
+        const WORK_END = '17:00';
+        
+        // Set today's date
+        document.getElementById('date-selector').valueAsDate = new Date();
+
+        // Data storage
+        let allLogs = [];
+        let devices = [];
+        let employees = {}; // PIN -> employee data
+        let employeeNames = {}; // PIN -> name mapping
+        
+        // Chart instances
+        let weeklyChart = null;
+        let distributionChart = null;
+        let arrivalChart = null;
+
+        // Fetch employee names
+        async function fetchEmployeeNames() {
+            try {
+                const res = await fetch('/api/employees');
+                const data = await res.json();
+                if (data.employees) {
+                    data.employees.forEach(emp => {
+                        employeeNames[emp.pin] = emp.name;
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching employees:', error);
+            }
+        }
+
+        // Fetch data
+        async function fetchData() {
+            try {
+                const [logsRes, devicesRes] = await Promise.all([
+                    fetch('/api/logs'),
+                    fetch('/api/devices')
+                ]);
+                
+                const logsData = await logsRes.json();
+                const devicesData = await devicesRes.json();
+                
+                allLogs = logsData.logs || [];
+                devices = devicesData.devices || [];
+                
+                processData();
+                updateUI();
+                updateCharts();
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        }
+
+        // Process attendance data
+        function processData() {
+            const selectedDate = document.getElementById('date-selector').value;
+            const todayLogs = allLogs.filter(log => {
+                const logDate = log.DateTime ? log.DateTime.split(' ')[0] : '';
+                return logDate === selectedDate;
+            });
+
+            // Group by employee PIN
+            employees = {};
+            todayLogs.forEach(log => {
+                const pin = log.PIN || 'Unknown';
+                if (!employees[pin]) {
+                    employees[pin] = {
+                        pin: pin,
+                        name: employeeNames[pin] || `Employee ${pin}`,
+                        punches: [],
+                        firstIn: null,
+                        lastOut: null,
+                        status: 'absent'
+                    };
+                }
+                employees[pin].punches.push(log);
+            });
+
+            // Calculate first in, last out, and status for each employee
+            Object.values(employees).forEach(emp => {
+                emp.punches.sort((a, b) => new Date(a.DateTime) - new Date(b.DateTime));
+                
+                const checkIns = emp.punches.filter(p => p.punch_type === 'CHECK_IN' || p.Status === '0');
+                const checkOuts = emp.punches.filter(p => p.punch_type === 'CHECK_OUT' || p.Status === '1');
+                
+                if (checkIns.length > 0) {
+                    emp.firstIn = checkIns[0].DateTime.split(' ')[1];
+                    emp.status = 'present';
+                    
+                    // Check if late (after 9:00 AM)
+                    if (emp.firstIn > WORK_START) {
+                        emp.status = 'late';
+                    }
+                }
+                
+                if (checkOuts.length > 0) {
+                    emp.lastOut = checkOuts[checkOuts.length - 1].DateTime.split(' ')[1];
+                }
+                
+                // Calculate hours worked
+                if (emp.firstIn && emp.lastOut) {
+                    const inTime = new Date(`2000-01-01 ${emp.firstIn}`);
+                    const outTime = new Date(`2000-01-01 ${emp.lastOut}`);
+                    const hours = (outTime - inTime) / (1000 * 60 * 60);
+                    emp.hoursWorked = hours.toFixed(1);
+                }
+            });
+        }
+
+        // Update UI
+        function updateUI() {
+            const empList = Object.values(employees);
+            const totalRegistered = Object.keys(employeeNames).length || empList.length;
+            const presentCount = empList.filter(e => e.status === 'present' || e.status === 'late').length;
+            const absentCount = totalRegistered - presentCount;
+            const lateCount = empList.filter(e => e.status === 'late').length;
+            
+            // Summary cards
+            document.getElementById('total-employees').textContent = totalRegistered || '-';
+            document.getElementById('present-count').textContent = presentCount;
+            document.getElementById('absent-count').textContent = absentCount > 0 ? absentCount : 0;
+            document.getElementById('late-count').textContent = lateCount;
+            document.getElementById('total-punches').textContent = allLogs.filter(l => {
+                const logDate = l.DateTime ? l.DateTime.split(' ')[0] : '';
+                return logDate === document.getElementById('date-selector').value;
+            }).length;
+            
+            // Attendance rate
+            if (totalRegistered > 0) {
+                const rate = Math.round((presentCount / totalRegistered) * 100);
+                document.getElementById('attendance-rate').textContent = rate + '%';
+                document.getElementById('attendance-progress').style.width = rate + '%';
+            }
+            
+            // Late rate
+            if (presentCount > 0) {
+                const lateRate = Math.round((lateCount / presentCount) * 100);
+                document.getElementById('late-rate').textContent = lateRate + '%';
+            }
+
+            // Employee table
+            const tableBody = document.getElementById('employee-table');
+            if (empList.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="px-6 py-8 text-center text-gray-500">
+                            <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
+                            <p>No attendance records for selected date</p>
+                        </td>
+                    </tr>
+                `;
+            } else {
+                tableBody.innerHTML = empList.map(emp => `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4">
+                            <div class="flex items-center">
+                                <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mr-3">
+                                    <span class="text-purple-600 font-semibold">${emp.pin}</span>
+                                </div>
+                                <div>
+                                    <p class="font-medium text-gray-800">${emp.name}</p>
+                                    <p class="text-sm text-gray-500">PIN: ${emp.pin}</p>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="text-gray-800">${emp.firstIn || '-'}</span>
+                            ${emp.status === 'late' ? '<span class="ml-2 text-xs text-amber-600">(Late)</span>' : ''}
+                        </td>
+                        <td class="px-6 py-4 text-gray-800">${emp.lastOut || '-'}</td>
+                        <td class="px-6 py-4 text-gray-800">${emp.hoursWorked ? emp.hoursWorked + ' hrs' : '-'}</td>
+                        <td class="px-6 py-4">
+                            <span class="px-3 py-1 rounded-full text-xs font-medium ${getStatusClass(emp.status)}">
+                                ${emp.status.toUpperCase()}
+                            </span>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+
+            // Device list
+            const deviceList = document.getElementById('device-list');
+            if (devices.length === 0) {
+                deviceList.innerHTML = '<p class="text-gray-500 text-sm">No devices connected</p>';
+            } else {
+                deviceList.innerHTML = devices.map(device => `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-3 h-3 bg-green-500 rounded-full pulse"></div>
+                            <div>
+                                <p class="font-medium text-gray-800">${device.serial_number}</p>
+                                <p class="text-xs text-gray-500">Last seen: ${formatTime(device.last_seen)}</p>
+                            </div>
+                        </div>
+                        <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Online</span>
+                    </div>
+                `).join('');
+            }
+
+            // Activity timeline
+            const timeline = document.getElementById('activity-timeline');
+            const selectedDate = document.getElementById('date-selector').value;
+            const todayLogs = allLogs.filter(l => {
+                const logDate = l.DateTime ? l.DateTime.split(' ')[0] : '';
+                return logDate === selectedDate;
+            });
+            const recentLogs = [...todayLogs].reverse().slice(0, 8);
+            if (recentLogs.length === 0) {
+                timeline.innerHTML = '<p class="text-gray-500 text-sm">No recent activity</p>';
+            } else {
+                timeline.innerHTML = recentLogs.map(log => `
+                    <div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-2 h-2 rounded-full ${getPunchTypeColor(log.punch_type)}"></div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-800">${employeeNames[log.PIN] || 'Employee ' + log.PIN}</p>
+                                <p class="text-xs text-gray-400">${formatPunchType(log.punch_type)}</p>
+                            </div>
+                        </div>
+                        <span class="text-xs font-mono text-gray-500">${log.DateTime ? log.DateTime.split(' ')[1] : ''}</span>
+                    </div>
+                `).join('');
+            }
+
+            // Punch type breakdown
+            updatePunchTypeBreakdown(todayLogs);
+            
+            // Top performers (earliest arrivals)
+            updateTopPerformers(empList);
+
+            // Calculate quick stats
+            calculateStats(empList);
+
+            // Re-initialize icons
+            lucide.createIcons();
+        }
+        
+        function getPunchTypeColor(type) {
+            const colors = {
+                'CHECK_IN': 'bg-green-500',
+                'CHECK_OUT': 'bg-red-500',
+                'BREAK_OUT': 'bg-amber-500',
+                'BREAK_IN': 'bg-blue-500',
+                'OVERTIME_IN': 'bg-purple-500',
+                'OVERTIME_OUT': 'bg-pink-500'
+            };
+            return colors[type] || 'bg-gray-400';
+        }
+        
+        function formatPunchType(type) {
+            const labels = {
+                'CHECK_IN': 'Check In',
+                'CHECK_OUT': 'Check Out',
+                'BREAK_OUT': 'Break Out',
+                'BREAK_IN': 'Break In',
+                'OVERTIME_IN': 'Overtime In',
+                'OVERTIME_OUT': 'Overtime Out'
+            };
+            return labels[type] || type || 'Punch';
+        }
+        
+        function updatePunchTypeBreakdown(logs) {
+            const breakdown = document.getElementById('punch-type-breakdown');
+            const counts = {};
+            logs.forEach(log => {
+                const type = log.punch_type || 'OTHER';
+                counts[type] = (counts[type] || 0) + 1;
+            });
+            
+            if (Object.keys(counts).length === 0) {
+                breakdown.innerHTML = '<p class="text-gray-500 text-sm">No punches today</p>';
+                return;
+            }
+            
+            const total = Object.values(counts).reduce((a, b) => a + b, 0);
+            breakdown.innerHTML = Object.entries(counts).map(([type, count]) => {
+                const pct = Math.round((count / total) * 100);
+                return `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-2 h-2 rounded-full ${getPunchTypeColor(type)}"></div>
+                            <span class="text-sm text-gray-600">${formatPunchType(type)}</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm font-medium text-gray-800">${count}</span>
+                            <span class="text-xs text-gray-400">${pct}%</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function updateTopPerformers(empList) {
+            const container = document.getElementById('top-performers');
+            const earlyArrivals = empList
+                .filter(e => e.firstIn)
+                .sort((a, b) => a.firstIn.localeCompare(b.firstIn))
+                .slice(0, 5);
+            
+            if (earlyArrivals.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm">No arrivals yet</p>';
+                return;
+            }
+            
+            container.innerHTML = earlyArrivals.map((emp, idx) => `
+                <div class="flex items-center justify-between py-1">
+                    <div class="flex items-center space-x-2">
+                        <span class="w-5 h-5 rounded-full ${idx === 0 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-500'} text-xs flex items-center justify-center font-medium">${idx + 1}</span>
+                        <span class="text-sm text-gray-700">${emp.name}</span>
+                    </div>
+                    <span class="text-xs font-mono ${emp.firstIn <= WORK_START ? 'text-green-600' : 'text-amber-600'}">${emp.firstIn}</span>
+                </div>
+            `).join('');
+        }
+
+        function calculateStats(empList) {
+            const arrivals = empList.filter(e => e.firstIn).map(e => e.firstIn);
+            const departures = empList.filter(e => e.lastOut).map(e => e.lastOut);
+            
+            if (arrivals.length > 0) {
+                const avgArrival = calculateAvgTime(arrivals);
+                document.getElementById('avg-arrival-big').textContent = avgArrival;
+            }
+            
+            if (departures.length > 0) {
+                const avgDeparture = calculateAvgTime(departures);
+                document.getElementById('avg-departure-big').textContent = avgDeparture;
+            }
+            
+            const hoursWorked = empList.filter(e => e.hoursWorked).map(e => parseFloat(e.hoursWorked));
+            if (hoursWorked.length > 0) {
+                const avgHours = (hoursWorked.reduce((a, b) => a + b, 0) / hoursWorked.length).toFixed(1);
+                document.getElementById('avg-hours-big').textContent = avgHours + ' hrs';
+            }
+            
+            const onTime = empList.filter(e => e.status === 'present').length;
+            const total = empList.filter(e => e.status !== 'absent').length;
+            if (total > 0) {
+                const rate = Math.round((onTime / total) * 100);
+                document.getElementById('ontime-rate-big').textContent = rate + '%';
+            }
+        }
+
+        function calculateAvgTime(times) {
+            const minutes = times.map(t => {
+                const [h, m] = t.split(':').map(Number);
+                return h * 60 + m;
+            });
+            const avg = minutes.reduce((a, b) => a + b, 0) / minutes.length;
+            const hours = Math.floor(avg / 60);
+            const mins = Math.round(avg % 60);
+            return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+        }
+
+        function getStatusClass(status) {
+            switch(status) {
+                case 'present': return 'bg-green-100 text-green-700';
+                case 'late': return 'bg-amber-100 text-amber-700';
+                case 'absent': return 'bg-red-100 text-red-700';
+                default: return 'bg-gray-100 text-gray-700';
+            }
+        }
+
+        function formatTime(isoString) {
+            if (!isoString) return 'Never';
+            const date = new Date(isoString);
+            const now = new Date();
+            const diff = (now - date) / 1000;
+            
+            if (diff < 60) return 'Just now';
+            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+            if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+            return date.toLocaleDateString();
+        }
+
+        function refreshData() {
+            fetchData();
+        }
+
+        function exportReport() {
+            const empList = Object.values(employees);
+            const selectedDate = document.getElementById('date-selector').value;
+            
+            let csv = 'PIN,Name,First In,Last Out,Hours Worked,Status\n';
+            empList.forEach(emp => {
+                csv += `${emp.pin},"${emp.name}",${emp.firstIn || ''},${emp.lastOut || ''},${emp.hoursWorked || ''},${emp.status}\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `attendance_${selectedDate}.csv`;
+            a.click();
+        }
+
+        // Date change handler
+        document.getElementById('date-selector').addEventListener('change', () => {
+            processData();
+            updateUI();
+        });
+
+        // Search handler
+        document.getElementById('search-employee').addEventListener('input', (e) => {
+            const search = e.target.value.toLowerCase();
+            const rows = document.querySelectorAll('#employee-table tr');
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(search) ? '' : 'none';
+            });
+        });
+
+        // Initialize charts
+        function initCharts() {
+            // Weekly Attendance Chart
+            const weeklyCtx = document.getElementById('weeklyChart').getContext('2d');
+            weeklyChart = new Chart(weeklyCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [{
+                        label: 'Present',
+                        data: [0, 0, 0, 0, 0, 0, 0],
+                        backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                        borderRadius: 4
+                    }, {
+                        label: 'Late',
+                        data: [0, 0, 0, 0, 0, 0, 0],
+                        backgroundColor: 'rgba(245, 158, 11, 0.8)',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, stacked: true },
+                        y: { grid: { color: '#f3f4f6' }, stacked: true, beginAtZero: true }
+                    }
+                }
+            });
+
+            // Distribution Chart (Doughnut)
+            const distCtx = document.getElementById('distributionChart').getContext('2d');
+            distributionChart = new Chart(distCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['On Time', 'Late', 'Absent'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { boxWidth: 12, padding: 8, font: { size: 10 } }
+                        }
+                    }
+                }
+            });
+
+            // Arrival Times Chart
+            const arrivalCtx = document.getElementById('arrivalChart').getContext('2d');
+            arrivalChart = new Chart(arrivalCtx, {
+                type: 'line',
+                data: {
+                    labels: ['6am', '7am', '8am', '9am', '10am', '11am', '12pm'],
+                    datasets: [{
+                        label: 'Arrivals',
+                        data: [0, 0, 0, 0, 0, 0, 0],
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#667eea'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { grid: { color: '#f3f4f6' }, beginAtZero: true, ticks: { stepSize: 1 } }
+                    }
+                }
+            });
+        }
+
+        // Update charts with data
+        function updateCharts() {
+            const empList = Object.values(employees);
+            const totalRegistered = Object.keys(employeeNames).length || empList.length;
+            const presentCount = empList.filter(e => e.status === 'present').length;
+            const lateCount = empList.filter(e => e.status === 'late').length;
+            const absentCount = Math.max(0, totalRegistered - presentCount - lateCount);
+
+            // Update distribution chart
+            if (distributionChart) {
+                distributionChart.data.datasets[0].data = [presentCount, lateCount, absentCount];
+                distributionChart.update();
+            }
+
+            // Update arrival times chart
+            if (arrivalChart) {
+                const arrivalBuckets = [0, 0, 0, 0, 0, 0, 0]; // 6am-12pm
+                empList.forEach(emp => {
+                    if (emp.firstIn) {
+                        const hour = parseInt(emp.firstIn.split(':')[0]);
+                        if (hour >= 6 && hour <= 12) {
+                            arrivalBuckets[hour - 6]++;
+                        }
+                    }
+                });
+                arrivalChart.data.datasets[0].data = arrivalBuckets;
+                arrivalChart.update();
+            }
+
+            // Update weekly chart with simulated data (would need historical API)
+            if (weeklyChart) {
+                // For now, show today's data on current day
+                const today = new Date().getDay();
+                const dayIndex = today === 0 ? 6 : today - 1; // Convert to Mon=0
+                const presentData = [0, 0, 0, 0, 0, 0, 0];
+                const lateData = [0, 0, 0, 0, 0, 0, 0];
+                presentData[dayIndex] = presentCount;
+                lateData[dayIndex] = lateCount;
+                weeklyChart.data.datasets[0].data = presentData;
+                weeklyChart.data.datasets[1].data = lateData;
+                weeklyChart.update();
+            }
+        }
+
+        // ==================== AUTHENTICATION ====================
+        
+        // Check authentication on page load
+        async function checkAuth() {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = '/login';
+                return false;
+            }
+            
+            try {
+                const response = await fetch('/api/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('username');
+                    window.location.href = '/login';
+                    return false;
+                }
+                
+                const user = await response.json();
+                document.getElementById('username-display').textContent = user.username;
+                document.getElementById('user-email').textContent = user.email;
+                return true;
+            } catch (error) {
+                console.error('Auth check failed:', error);
+                window.location.href = '/login';
+                return false;
+            }
+        }
+        
+        // Toggle user menu
+        document.getElementById('userMenuBtn').addEventListener('click', function(e) {
+            e.stopPropagation();
+            const menu = document.getElementById('userMenu');
+            menu.classList.toggle('hidden');
+        });
+        
+        // Close menu when clicking outside
+        document.addEventListener('click', function() {
+            document.getElementById('userMenu').classList.add('hidden');
+        });
+        
+        // Logout handler
+        document.getElementById('logoutBtn').addEventListener('click', function() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('username');
+            window.location.href = '/login';
+        });
+        
+        // Initial load
+        async function init() {
+            const isAuthenticated = await checkAuth();
+            if (isAuthenticated) {
+                await fetchEmployeeNames();
+                initCharts();
+                await fetchData();
+            }
+        }
+        
+        init();
+        
+        // Change password button handler
+        document.getElementById('changePasswordBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            document.getElementById('userMenu').classList.add('hidden');
+            document.getElementById('changePasswordModal').classList.add('active');
+        });
+        
+        // Auto-refresh every 30 seconds
+        setInterval(fetchData, 30000);
+    </script>
+
+    <!-- Change Password Modal -->
+    <div id="changePasswordModal" class="modal" style="display: none; position: fixed; z-index: 50; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div style="display: flex; align-items: center; justify-content: center; min-height: 100vh;">
+            <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+                <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-gray-800">Change Password</h3>
+                    <button id="closePasswordModalBtn" class="text-gray-400 hover:text-gray-600">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                
+                <form id="changePasswordForm" class="p-6 space-y-4">
+                    <div id="passwordAlert" class="hidden p-3 rounded-lg"></div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Current Password *</label>
+                        <input type="password" id="currentPassword" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">New Password *</label>
+                        <input type="password" id="newPassword" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        <p class="text-xs text-gray-500 mt-1">Minimum 8 characters</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Confirm New Password *</label>
+                        <input type="password" id="confirmNewPassword" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    </div>
+
+                    <div class="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                        <button type="button" id="cancelPasswordBtn" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                            Cancel
+                        </button>
+                        <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                            <i data-lucide="key" class="w-4 h-4 inline mr-2"></i>Change Password
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Change password modal controls
+        document.getElementById('closePasswordModalBtn').addEventListener('click', () => {
+            document.getElementById('changePasswordModal').style.display = 'none';
+            document.getElementById('changePasswordModal').classList.remove('active');
+        });
+        
+        document.getElementById('cancelPasswordBtn').addEventListener('click', () => {
+            document.getElementById('changePasswordModal').style.display = 'none';
+            document.getElementById('changePasswordModal').classList.remove('active');
+        });
+
+        // Change password form submission
+        document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmNewPassword = document.getElementById('confirmNewPassword').value;
+            
+            const passwordAlert = document.getElementById('passwordAlert');
+            
+            if (newPassword !== confirmNewPassword) {
+                passwordAlert.className = 'p-3 rounded-lg bg-red-50 text-red-800 border border-red-200';
+                passwordAlert.textContent = 'New passwords do not match';
+                passwordAlert.classList.remove('hidden');
+                return;
+            }
+            
+            if (newPassword.length < 8) {
+                passwordAlert.className = 'p-3 rounded-lg bg-red-50 text-red-800 border border-red-200';
+                passwordAlert.textContent = 'Password must be at least 8 characters';
+                passwordAlert.classList.remove('hidden');
+                return;
+            }
+            
+            try {
+                const token = localStorage.getItem('access_token');
+                const response = await fetch('/api/auth/change-password', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        old_password: currentPassword,
+                        new_password: newPassword
+                    })
+                });
+                
+                if (response.ok) {
+                    passwordAlert.className = 'p-3 rounded-lg bg-green-50 text-green-800 border border-green-200';
+                    passwordAlert.textContent = 'Password changed successfully!';
+                    passwordAlert.classList.remove('hidden');
+                    
+                    setTimeout(() => {
+                        document.getElementById('changePasswordModal').style.display = 'none';
+                        document.getElementById('changePasswordModal').classList.remove('active');
+                        document.getElementById('changePasswordForm').reset();
+                        passwordAlert.classList.add('hidden');
+                    }, 2000);
+                } else {
+                    const error = await response.json();
+                    passwordAlert.className = 'p-3 rounded-lg bg-red-50 text-red-800 border border-red-200';
+                    passwordAlert.textContent = error.detail || 'Failed to change password';
+                    passwordAlert.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Failed to change password:', error);
+                passwordAlert.className = 'p-3 rounded-lg bg-red-50 text-red-800 border border-red-200';
+                passwordAlert.textContent = 'Failed to change password';
+                passwordAlert.classList.remove('hidden');
+            }
+        });
+
+        // Show modal helper
+        window.showChangePasswordModal = function() {
+            document.getElementById('changePasswordModal').style.display = 'block';
+            document.getElementById('changePasswordModal').classList.add('active');
+            lucide.createIcons(); // Re-render icons
+        };
+    </script>
+</body>
+</html>

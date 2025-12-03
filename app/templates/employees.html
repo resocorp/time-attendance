@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Management - ZK Attendance Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .modal { display: none; }
+        .modal.active { display: flex; }
+        /* Navigation styles */
+        .nav-link { background: rgba(255,255,255,0.1); }
+        .nav-link:hover { background: rgba(255,255,255,0.25); }
+        .nav-link.active { background: rgba(255,255,255,0.3); font-weight: 600; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navigation -->
+    <nav class="gradient-bg text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <!-- Logo -->
+                <a href="/dashboard" class="flex items-center space-x-3 hover:opacity-90 transition">
+                    <i data-lucide="fingerprint" class="w-8 h-8"></i>
+                    <h1 class="text-xl font-bold">ZK Attendance Pro</h1>
+                </a>
+                
+                <!-- Main Navigation -->
+                <div class="flex items-center space-x-1">
+                    <a href="/dashboard" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="/employees" class="nav-link active flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="users" class="w-4 h-4"></i>
+                        <span>Employees</span>
+                    </a>
+                    <a href="/reports" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                        <span>Reports</span>
+                    </a>
+                    <a href="/monitor" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="activity" class="w-4 h-4"></i>
+                        <span>Live Monitor</span>
+                    </a>
+                    <a href="/settings" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="settings" class="w-4 h-4"></i>
+                        <span>Settings</span>
+                    </a>
+                </div>
+                
+                <!-- Employee Count Badge -->
+                <div class="flex items-center space-x-2 bg-white/20 px-3 py-1.5 rounded-full text-sm font-medium">
+                    <i data-lucide="users" class="w-4 h-4"></i>
+                    <span id="employeeCount">0 employees</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 py-6">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-800">Employee Management</h2>
+                <p class="text-gray-500">Manage employees and sync with devices</p>
+            </div>
+            <button onclick="openModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                <i data-lucide="user-plus" class="w-5 h-5"></i>
+                <span>Add Employee</span>
+            </button>
+        </div>
+
+        <!-- Search and Filter -->
+        <div class="bg-white rounded-lg shadow-sm p-4 mb-6">
+            <div class="flex items-center space-x-4">
+                <div class="flex-1 relative">
+                    <i data-lucide="search" class="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="searchInput" placeholder="Search by name, PIN, or department..." 
+                           class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                           oninput="filterEmployees()">
+                </div>
+                <select id="departmentFilter" class="border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500" onchange="filterEmployees()">
+                    <option value="">All Departments</option>
+                </select>
+                <button onclick="syncAllToDevice()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center space-x-2">
+                    <i data-lucide="upload" class="w-5 h-5"></i>
+                    <span>Sync to Device</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Next PIN Suggestion -->
+        <div id="nextPinInfo" class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i data-lucide="info" class="w-5 h-5 text-blue-600"></i>
+                <span class="text-blue-800">Next available PIN: <strong id="nextPin">1</strong></span>
+            </div>
+            <button onclick="openModalWithNextPin()" class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                Use this PIN →
+            </button>
+        </div>
+
+        <!-- Employee Table -->
+        <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+            <table class="w-full">
+                <thead class="bg-gray-50 border-b">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none" onclick="sortBy('pin')">
+                            <div class="flex items-center space-x-1">
+                                <span>PIN</span>
+                                <i data-lucide="chevrons-up-down" class="w-4 h-4 sort-icon" data-col="pin"></i>
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none" onclick="sortBy('name')">
+                            <div class="flex items-center space-x-1">
+                                <span>Name</span>
+                                <i data-lucide="chevrons-up-down" class="w-4 h-4 sort-icon" data-col="name"></i>
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none" onclick="sortBy('department')">
+                            <div class="flex items-center space-x-1">
+                                <span>Department</span>
+                                <i data-lucide="chevrons-up-down" class="w-4 h-4 sort-icon" data-col="department"></i>
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none" onclick="sortBy('position')">
+                            <div class="flex items-center space-x-1">
+                                <span>Position</span>
+                                <i data-lucide="chevrons-up-down" class="w-4 h-4 sort-icon" data-col="position"></i>
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none" onclick="sortBy('is_active')">
+                            <div class="flex items-center space-x-1">
+                                <span>Status</span>
+                                <i data-lucide="chevrons-up-down" class="w-4 h-4 sort-icon" data-col="is_active"></i>
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="employeeTable" class="divide-y divide-gray-200">
+                    <!-- Employees will be loaded here -->
+                </tbody>
+            </table>
+            
+            <!-- Empty State -->
+            <div id="emptyState" class="hidden py-12 text-center">
+                <i data-lucide="users" class="w-16 h-16 mx-auto text-gray-300 mb-4"></i>
+                <h3 class="text-lg font-medium text-gray-500">No employees yet</h3>
+                <p class="text-gray-400 mb-4">Add your first employee to get started</p>
+                <button onclick="openModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                    Add Employee
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Employee Modal -->
+    <div id="employeeModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+            <div class="flex items-center justify-between px-6 py-4 border-b">
+                <h3 id="modalTitle" class="text-lg font-semibold">Add Employee</h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <form id="employeeForm" onsubmit="saveEmployee(event)" class="p-6 space-y-4">
+                <input type="hidden" id="editingPin">
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">PIN *</label>
+                        <input type="text" id="pin" required pattern="[0-9]+" 
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                               placeholder="e.g., 1, 2, 3...">
+                        <p class="text-xs text-gray-500 mt-1">Must match device user ID</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                        <input type="text" id="name" required 
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                               placeholder="Full name">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                        <input type="text" id="department" 
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                               placeholder="e.g., Engineering">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Position</label>
+                        <input type="text" id="position" 
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                               placeholder="e.g., Developer">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input type="email" id="email" 
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                               placeholder="email@example.com">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                        <input type="tel" id="phone" 
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                               placeholder="+1234567890">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Card Number</label>
+                        <input type="text" id="card_number" 
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                               placeholder="RFID card number">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Hire Date</label>
+                        <input type="date" id="hire_date" 
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea id="notes" rows="2" 
+                              class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                              placeholder="Additional notes..."></textarea>
+                </div>
+
+                <div class="flex items-center">
+                    <input type="checkbox" id="is_active" checked 
+                           class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    <label for="is_active" class="ml-2 text-sm text-gray-700">Active employee</label>
+                </div>
+
+                <div class="flex justify-end space-x-3 pt-4 border-t">
+                    <button type="button" onclick="closeModal()" 
+                            class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button type="submit" 
+                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save Employee</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4 p-6">
+            <div class="text-center">
+                <div class="w-12 h-12 rounded-full bg-red-100 mx-auto mb-4 flex items-center justify-center">
+                    <i data-lucide="trash-2" class="w-6 h-6 text-red-600"></i>
+                </div>
+                <h3 class="text-lg font-semibold mb-2">Delete Employee?</h3>
+                <p class="text-gray-500 mb-6">This action cannot be undone. The employee will be removed from the system.</p>
+                <div class="flex justify-center space-x-3">
+                    <button onclick="closeDeleteModal()" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button onclick="confirmDelete()" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300">
+        <span id="toastMessage">Success!</span>
+    </div>
+
+    <script>
+        let employees = [];
+        let deletingPin = null;
+        let sortColumn = 'pin';
+        let sortDirection = 'asc';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            loadEmployees();
+        });
+
+        async function loadEmployees() {
+            try {
+                const response = await fetch('/api/employees');
+                const data = await response.json();
+                employees = data.employees || [];
+                sortEmployees();
+                renderEmployees();
+                updateDepartmentFilter();
+                updateNextPin();
+                document.getElementById('employeeCount').textContent = `${employees.length} employees`;
+            } catch (error) {
+                console.error('Failed to load employees:', error);
+                showToast('Failed to load employees', 'error');
+            }
+        }
+
+        function updateNextPin() {
+            if (employees.length === 0) {
+                document.getElementById('nextPin').textContent = '1';
+                return;
+            }
+            const pins = employees.map(e => parseInt(e.pin)).filter(p => !isNaN(p)).sort((a, b) => a - b);
+            let nextPin = 1;
+            for (const pin of pins) {
+                if (pin === nextPin) nextPin++;
+                else if (pin > nextPin) break;
+            }
+            document.getElementById('nextPin').textContent = nextPin;
+        }
+
+        function openModalWithNextPin() {
+            openModal();
+            document.getElementById('pin').value = document.getElementById('nextPin').textContent;
+        }
+
+        function sortBy(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            sortEmployees();
+            updateSortIcons();
+            filterEmployees();
+        }
+
+        function sortEmployees() {
+            employees.sort((a, b) => {
+                let valA = a[sortColumn];
+                let valB = b[sortColumn];
+                
+                // Handle PIN as number
+                if (sortColumn === 'pin') {
+                    valA = parseInt(valA) || 0;
+                    valB = parseInt(valB) || 0;
+                } else if (sortColumn === 'is_active') {
+                    valA = valA ? 1 : 0;
+                    valB = valB ? 1 : 0;
+                } else {
+                    valA = (valA || '').toString().toLowerCase();
+                    valB = (valB || '').toString().toLowerCase();
+                }
+                
+                if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+                if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        function updateSortIcons() {
+            document.querySelectorAll('.sort-icon').forEach(icon => {
+                const col = icon.dataset.col;
+                if (col === sortColumn) {
+                    icon.setAttribute('data-lucide', sortDirection === 'asc' ? 'chevron-up' : 'chevron-down');
+                } else {
+                    icon.setAttribute('data-lucide', 'chevrons-up-down');
+                }
+            });
+            lucide.createIcons();
+        }
+
+        function renderEmployees(filtered = null) {
+            const list = filtered || employees;
+            const tbody = document.getElementById('employeeTable');
+            const emptyState = document.getElementById('emptyState');
+
+            if (list.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            tbody.innerHTML = list.map(emp => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4">
+                        <span class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-semibold">
+                            ${emp.pin}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="font-medium text-gray-900">${emp.name}</div>
+                        ${emp.email ? `<div class="text-sm text-gray-500">${emp.email}</div>` : ''}
+                    </td>
+                    <td class="px-6 py-4 text-gray-600">${emp.department || '-'}</td>
+                    <td class="px-6 py-4 text-gray-600">${emp.position || '-'}</td>
+                    <td class="px-6 py-4">
+                        ${emp.is_active ? 
+                            '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>' :
+                            '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Inactive</span>'
+                        }
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex items-center space-x-2">
+                            <button onclick="editEmployee('${emp.pin}')" class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded">
+                                <i data-lucide="edit-2" class="w-4 h-4"></i>
+                            </button>
+                            <button onclick="syncToDevice('${emp.pin}', '${emp.name}')" class="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded" title="Sync to device">
+                                <i data-lucide="upload" class="w-4 h-4"></i>
+                            </button>
+                            <button onclick="openDeleteModal('${emp.pin}')" class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        function updateDepartmentFilter() {
+            const departments = [...new Set(employees.map(e => e.department).filter(Boolean))];
+            const select = document.getElementById('departmentFilter');
+            select.innerHTML = '<option value="">All Departments</option>' + 
+                departments.map(d => `<option value="${d}">${d}</option>`).join('');
+        }
+
+        function filterEmployees() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const dept = document.getElementById('departmentFilter').value;
+            
+            const filtered = employees.filter(emp => {
+                const matchSearch = !search || 
+                    emp.name.toLowerCase().includes(search) ||
+                    emp.pin.toLowerCase().includes(search) ||
+                    (emp.department && emp.department.toLowerCase().includes(search));
+                const matchDept = !dept || emp.department === dept;
+                return matchSearch && matchDept;
+            });
+            
+            renderEmployees(filtered);
+        }
+
+        function openModal(employee = null) {
+            const modal = document.getElementById('employeeModal');
+            const title = document.getElementById('modalTitle');
+            const form = document.getElementById('employeeForm');
+            
+            form.reset();
+            document.getElementById('is_active').checked = true;
+            
+            if (employee) {
+                title.textContent = 'Edit Employee';
+                document.getElementById('editingPin').value = employee.pin;
+                document.getElementById('pin').value = employee.pin;
+                document.getElementById('pin').readOnly = true;
+                document.getElementById('name').value = employee.name || '';
+                document.getElementById('department').value = employee.department || '';
+                document.getElementById('position').value = employee.position || '';
+                document.getElementById('email').value = employee.email || '';
+                document.getElementById('phone').value = employee.phone || '';
+                document.getElementById('card_number').value = employee.card_number || '';
+                document.getElementById('hire_date').value = employee.hire_date || '';
+                document.getElementById('notes').value = employee.notes || '';
+                document.getElementById('is_active').checked = employee.is_active;
+            } else {
+                title.textContent = 'Add Employee';
+                document.getElementById('editingPin').value = '';
+                document.getElementById('pin').readOnly = false;
+            }
+            
+            modal.classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('employeeModal').classList.remove('active');
+        }
+
+        function editEmployee(pin) {
+            const employee = employees.find(e => e.pin === pin);
+            if (employee) openModal(employee);
+        }
+
+        async function saveEmployee(event) {
+            event.preventDefault();
+            
+            const editingPin = document.getElementById('editingPin').value;
+            const employee = {
+                pin: document.getElementById('pin').value,
+                name: document.getElementById('name').value,
+                department: document.getElementById('department').value || null,
+                position: document.getElementById('position').value || null,
+                email: document.getElementById('email').value || null,
+                phone: document.getElementById('phone').value || null,
+                card_number: document.getElementById('card_number').value || null,
+                hire_date: document.getElementById('hire_date').value || null,
+                notes: document.getElementById('notes').value || null,
+                is_active: document.getElementById('is_active').checked
+            };
+
+            try {
+                const url = editingPin ? `/api/employees/${editingPin}` : '/api/employees';
+                const method = editingPin ? 'PUT' : 'POST';
+                
+                const response = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(employee)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to save employee');
+                }
+
+                closeModal();
+                await loadEmployees();
+                showToast(editingPin ? 'Employee updated!' : 'Employee added!');
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        function openDeleteModal(pin) {
+            deletingPin = pin;
+            document.getElementById('deleteModal').classList.add('active');
+        }
+
+        function closeDeleteModal() {
+            deletingPin = null;
+            document.getElementById('deleteModal').classList.remove('active');
+        }
+
+        async function confirmDelete() {
+            if (!deletingPin) return;
+            
+            try {
+                const response = await fetch(`/api/employees/${deletingPin}`, { method: 'DELETE' });
+                if (!response.ok) throw new Error('Failed to delete');
+                
+                closeDeleteModal();
+                await loadEmployees();
+                showToast('Employee deleted');
+            } catch (error) {
+                showToast('Failed to delete employee', 'error');
+            }
+        }
+
+        async function syncToDevice(pin, name) {
+            try {
+                const response = await fetch('/api/device/add-user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pin, name })
+                });
+                
+                if (!response.ok) throw new Error('Failed to queue sync');
+                showToast(`Queued sync for ${name}`);
+            } catch (error) {
+                showToast('Failed to sync to device', 'error');
+            }
+        }
+
+        async function syncAllToDevice() {
+            const activeEmployees = employees.filter(e => e.is_active);
+            if (activeEmployees.length === 0) {
+                showToast('No active employees to sync', 'error');
+                return;
+            }
+
+            try {
+                for (const emp of activeEmployees) {
+                    await fetch('/api/device/add-user', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ pin: emp.pin, name: emp.name })
+                    });
+                }
+                showToast(`Queued ${activeEmployees.length} employees for sync`);
+            } catch (error) {
+                showToast('Failed to sync employees', 'error');
+            }
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            
+            toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 ${
+                type === 'error' ? 'bg-red-600' : 'bg-green-600'
+            } text-white`;
+            toastMessage.textContent = message;
+            
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

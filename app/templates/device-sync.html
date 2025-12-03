@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Sync - ZK Attendance Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        /* Navigation styles */
+        .nav-link { background: rgba(255,255,255,0.1); }
+        .nav-link:hover { background: rgba(255,255,255,0.25); }
+        .nav-link.active { background: rgba(255,255,255,0.3); font-weight: 600; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navigation -->
+    <nav class="gradient-bg text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <!-- Logo -->
+                <a href="/dashboard" class="flex items-center space-x-3 hover:opacity-90 transition">
+                    <i data-lucide="fingerprint" class="w-8 h-8"></i>
+                    <h1 class="text-xl font-bold">ZK Attendance Pro</h1>
+                </a>
+                
+                <!-- Main Navigation -->
+                <div class="flex items-center space-x-1">
+                    <a href="/dashboard" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="/employees" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="users" class="w-4 h-4"></i>
+                        <span>Employees</span>
+                    </a>
+                    <a href="/reports" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                        <span>Reports</span>
+                    </a>
+                    <a href="/monitor" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="activity" class="w-4 h-4"></i>
+                        <span>Live Monitor</span>
+                    </a>
+                    <a href="/settings" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="settings" class="w-4 h-4"></i>
+                        <span>Settings</span>
+                    </a>
+                </div>
+                
+                <!-- Spacer for alignment -->
+                <div class="w-24"></div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-4xl mx-auto px-4 py-8">
+        <!-- Device Selection -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">📱 Connected Devices</h2>
+            <div id="device-list" class="space-y-2">
+                Loading...
+            </div>
+        </div>
+
+        <!-- Add User Form -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">➕ Add User to Device</h2>
+            <form id="add-user-form" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Device Serial Number</label>
+                        <input type="text" id="add-device-sn" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" 
+                            placeholder="TNA8235000265" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">PIN (User ID)</label>
+                        <input type="text" id="add-pin" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" 
+                            placeholder="100" required>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                        <input type="text" id="add-name" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" 
+                            placeholder="John Doe" maxlength="24" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Card Number (Optional)</label>
+                        <input type="text" id="add-card" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" 
+                            placeholder="12345678">
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition">
+                    📤 Queue User Add Command
+                </button>
+            </form>
+        </div>
+
+        <!-- Delete User Form -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">🗑️ Delete User from Device</h2>
+            <form id="delete-user-form" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Device Serial Number</label>
+                        <input type="text" id="del-device-sn" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" 
+                            placeholder="TNA8235000265" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">PIN to Delete</label>
+                        <input type="text" id="del-pin" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" 
+                            placeholder="100" required>
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition">
+                    🗑️ Queue User Delete Command
+                </button>
+            </form>
+        </div>
+
+        <!-- Pending Commands -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold">📋 Pending Commands</h2>
+                <button onclick="refreshCommands()" class="text-purple-600 hover:text-purple-800">🔄 Refresh</button>
+            </div>
+            <div id="pending-commands" class="space-y-2 font-mono text-sm">
+                Loading...
+            </div>
+        </div>
+
+        <!-- Command Log -->
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            <h2 class="text-lg font-semibold mb-4">📜 Command Results</h2>
+            <div id="command-log" class="space-y-2 max-h-60 overflow-y-auto">
+                <p class="text-gray-500">Commands and responses will appear here...</p>
+            </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-6">
+            <h3 class="font-semibold text-blue-800 mb-2">📖 How Device Sync Works</h3>
+            <ol class="list-decimal list-inside space-y-2 text-blue-700 text-sm">
+                <li><strong>Queue Command</strong> - Use the forms above to queue a command</li>
+                <li><strong>Device Polls</strong> - K60 polls every ~30 seconds via <code>/iclock/getrequest</code></li>
+                <li><strong>Server Responds</strong> - Server sends the queued command to device</li>
+                <li><strong>Device Executes</strong> - K60 adds/deletes the user</li>
+                <li><strong>Verify</strong> - Check the device's user list to confirm</li>
+            </ol>
+            <p class="mt-4 text-blue-600 text-sm">
+                <strong>Note:</strong> This only syncs name/card. Fingerprints must be enrolled directly on the device.
+            </p>
+        </div>
+    </main>
+
+    <script>
+        // Load devices
+        async function loadDevices() {
+            try {
+                const res = await fetch('/api/devices');
+                const data = await res.json();
+                const deviceList = document.getElementById('device-list');
+                
+                if (data.devices && data.devices.length > 0) {
+                    deviceList.innerHTML = data.devices.map(d => `
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div class="flex items-center space-x-3">
+                                <span class="w-3 h-3 bg-green-500 rounded-full"></span>
+                                <span class="font-mono font-medium">${d.serial_number}</span>
+                            </div>
+                            <button onclick="selectDevice('${d.serial_number}')" 
+                                class="text-purple-600 hover:text-purple-800 text-sm">
+                                Select
+                            </button>
+                        </div>
+                    `).join('');
+                } else {
+                    deviceList.innerHTML = '<p class="text-gray-500">No devices connected</p>';
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function selectDevice(sn) {
+            document.getElementById('add-device-sn').value = sn;
+            document.getElementById('del-device-sn').value = sn;
+        }
+
+        // Refresh pending commands
+        async function refreshCommands() {
+            try {
+                const res = await fetch('/api/device/pending-commands');
+                const data = await res.json();
+                const container = document.getElementById('pending-commands');
+                
+                const commands = data.all_commands || {};
+                const entries = Object.entries(commands);
+                
+                if (entries.length === 0 || entries.every(([k, v]) => v.length === 0)) {
+                    container.innerHTML = '<p class="text-gray-500">No pending commands</p>';
+                } else {
+                    container.innerHTML = entries.map(([device, cmds]) => {
+                        if (cmds.length === 0) return '';
+                        return `
+                            <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <p class="font-semibold text-yellow-800">${device}</p>
+                                ${cmds.map(c => `<p class="text-yellow-700 text-xs mt-1">→ ${c}</p>`).join('')}
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function logCommand(message, type = 'info') {
+            const log = document.getElementById('command-log');
+            const time = new Date().toLocaleTimeString();
+            const colors = {
+                'info': 'text-gray-700',
+                'success': 'text-green-700 bg-green-50',
+                'error': 'text-red-700 bg-red-50'
+            };
+            log.innerHTML = `
+                <div class="p-2 rounded ${colors[type]}">
+                    <span class="text-gray-400">[${time}]</span> ${message}
+                </div>
+            ` + log.innerHTML;
+        }
+
+        // Add user form
+        document.getElementById('add-user-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const deviceSn = document.getElementById('add-device-sn').value;
+            const pin = document.getElementById('add-pin').value;
+            const name = document.getElementById('add-name').value;
+            const card = document.getElementById('add-card').value;
+            
+            try {
+                const params = new URLSearchParams({
+                    device_sn: deviceSn,
+                    pin: pin,
+                    name: name
+                });
+                if (card) params.append('card', card);
+                
+                const res = await fetch(`/api/device/add-user?${params}`, { method: 'POST' });
+                const data = await res.json();
+                
+                logCommand(`✅ Queued: Add user "${name}" (PIN=${pin}) to ${deviceSn}`, 'success');
+                logCommand(`Command: ${data.command}`, 'info');
+                
+                refreshCommands();
+            } catch (e) {
+                logCommand(`❌ Error: ${e.message}`, 'error');
+            }
+        });
+
+        // Delete user form
+        document.getElementById('delete-user-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const deviceSn = document.getElementById('del-device-sn').value;
+            const pin = document.getElementById('del-pin').value;
+            
+            try {
+                const params = new URLSearchParams({
+                    device_sn: deviceSn,
+                    pin: pin
+                });
+                
+                const res = await fetch(`/api/device/delete-user?${params}`, { method: 'POST' });
+                const data = await res.json();
+                
+                logCommand(`✅ Queued: Delete PIN=${pin} from ${deviceSn}`, 'success');
+                
+                refreshCommands();
+            } catch (e) {
+                logCommand(`❌ Error: ${e.message}`, 'error');
+            }
+        });
+
+        // Initialize Lucide icons
+        lucide.createIcons();
+        
+        // Initial load
+        loadDevices();
+        refreshCommands();
+        
+        // Auto-refresh
+        setInterval(() => {
+            loadDevices();
+            refreshCommands();
+        }, 5000);
+    </script>
+</body>
+</html>

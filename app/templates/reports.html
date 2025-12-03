@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZK Attendance Pro - Reports</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .card { background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        /* Navigation styles */
+        .nav-link { background: rgba(255,255,255,0.1); }
+        .nav-link:hover { background: rgba(255,255,255,0.25); }
+        .nav-link.active { background: rgba(255,255,255,0.3); font-weight: 600; }
+        /* Progress bars */
+        .progress-bar { height: 8px; border-radius: 4px; background: #e5e7eb; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+        /* Status badges */
+        .badge { padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; }
+        .badge-green { background: #d1fae5; color: #065f46; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+        .badge-amber { background: #fef3c7; color: #92400e; }
+        .badge-blue { background: #dbeafe; color: #1e40af; }
+        /* Table styles */
+        .table-hover tr:hover { background: #f9fafb; }
+        /* Employee card */
+        .emp-card { transition: all 0.2s ease; cursor: pointer; }
+        .emp-card:hover { transform: translateY(-2px); box-shadow: 0 8px 16px -4px rgba(0,0,0,0.1); }
+        .emp-card.selected { box-shadow: 0 0 0 2px #667eea; border-color: #667eea; }
+        /* Print styles */
+        @media print {
+            .no-print { display: none !important; }
+            .card { box-shadow: none; border: 1px solid #e5e7eb; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navigation -->
+    <nav class="gradient-bg text-white shadow-lg no-print">
+        <div class="max-w-7xl mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <!-- Logo -->
+                <a href="/dashboard" class="flex items-center space-x-3 hover:opacity-90 transition">
+                    <i data-lucide="fingerprint" class="w-8 h-8"></i>
+                    <h1 class="text-xl font-bold">ZK Attendance Pro</h1>
+                </a>
+                
+                <!-- Main Navigation -->
+                <div class="flex items-center space-x-1">
+                    <a href="/dashboard" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="/employees" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="users" class="w-4 h-4"></i>
+                        <span>Employees</span>
+                    </a>
+                    <a href="/reports" class="nav-link active flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                        <span>Reports</span>
+                    </a>
+                    <a href="/monitor" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="activity" class="w-4 h-4"></i>
+                        <span>Live Monitor</span>
+                    </a>
+                    <a href="/settings" class="nav-link flex items-center space-x-2 px-4 py-2 rounded-lg transition">
+                        <i data-lucide="settings" class="w-4 h-4"></i>
+                        <span>Settings</span>
+                    </a>
+                </div>
+                
+                <!-- Report Actions -->
+                <div class="flex items-center space-x-2">
+                    <button onclick="exportReport('pdf')" class="flex items-center space-x-1 bg-white/20 px-3 py-1.5 rounded-lg text-sm hover:bg-white/30 transition">
+                        <i data-lucide="file-text" class="w-4 h-4"></i>
+                        <span>PDF</span>
+                    </button>
+                    <button onclick="exportReport('csv')" class="flex items-center space-x-1 bg-white/20 px-3 py-1.5 rounded-lg text-sm hover:bg-white/30 transition">
+                        <i data-lucide="table" class="w-4 h-4"></i>
+                        <span>CSV</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 py-6">
+        <!-- Page Header with Period Selector -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4 no-print">
+            <div>
+                <h2 class="text-2xl font-semibold text-gray-800">Reports & Analytics</h2>
+                <p class="text-gray-500 text-sm">Detailed employee performance analysis</p>
+            </div>
+            
+            <!-- Period Selector -->
+            <div class="flex items-center space-x-3">
+                <div class="flex items-center space-x-2 bg-white rounded-lg border px-3 py-2">
+                    <i data-lucide="calendar" class="w-4 h-4 text-gray-400"></i>
+                    <select id="period-type" class="text-sm border-none focus:ring-0 bg-transparent">
+                        <option value="month">Monthly</option>
+                        <option value="week">Weekly</option>
+                        <option value="custom">Custom Range</option>
+                    </select>
+                </div>
+                
+                <div id="month-selector" class="flex items-center space-x-2">
+                    <input type="month" id="selected-month" class="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500">
+                </div>
+                
+                <div id="custom-range" class="hidden flex items-center space-x-2">
+                    <input type="date" id="start-date" class="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500">
+                    <span class="text-gray-400">to</span>
+                    <input type="date" id="end-date" class="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500">
+                </div>
+                
+                <button onclick="loadReport()" class="flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    <span>Generate</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Summary Statistics -->
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+            <div class="card p-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="users" class="w-5 h-5 text-blue-600"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Total Employees</p>
+                        <p id="stat-total-employees" class="text-xl font-bold text-gray-800">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card p-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="calendar-check" class="w-5 h-5 text-green-600"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Working Days</p>
+                        <p id="stat-working-days" class="text-xl font-bold text-gray-800">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card p-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="trending-up" class="w-5 h-5 text-emerald-600"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Avg Attendance</p>
+                        <p id="stat-avg-attendance" class="text-xl font-bold text-emerald-600">--%</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card p-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="clock" class="w-5 h-5 text-amber-600"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Late Arrivals</p>
+                        <p id="stat-late-arrivals" class="text-xl font-bold text-amber-600">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card p-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-cyan-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="timer" class="w-5 h-5 text-cyan-600"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Avg Work Hours</p>
+                        <p id="stat-avg-hours" class="text-xl font-bold text-gray-800">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card p-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="fingerprint" class="w-5 h-5 text-purple-600"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Total Punches</p>
+                        <p id="stat-total-punches" class="text-xl font-bold text-purple-600">-</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <!-- Daily Attendance Trend -->
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-semibold text-gray-800">Daily Attendance Trend</h3>
+                    <div class="flex items-center space-x-2 text-xs">
+                        <span class="flex items-center"><span class="w-3 h-3 bg-green-500 rounded mr-1"></span>Present</span>
+                        <span class="flex items-center"><span class="w-3 h-3 bg-amber-500 rounded mr-1"></span>Late</span>
+                        <span class="flex items-center"><span class="w-3 h-3 bg-red-500 rounded mr-1"></span>Absent</span>
+                    </div>
+                </div>
+                <div class="h-64">
+                    <canvas id="dailyTrendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Attendance Distribution -->
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-semibold text-gray-800">Attendance Distribution</h3>
+                    <span class="text-xs text-gray-400">Period Overview</span>
+                </div>
+                <div class="h-64 flex items-center justify-center">
+                    <canvas id="distributionChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- More Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            <!-- Average Arrival Time by Day -->
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-semibold text-gray-800">Avg Arrival by Day</h3>
+                    <span class="text-xs text-gray-400">Weekly pattern</span>
+                </div>
+                <div class="h-48">
+                    <canvas id="arrivalByDayChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Work Hours Distribution -->
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-semibold text-gray-800">Work Hours Distribution</h3>
+                    <span class="text-xs text-gray-400">Hours worked</span>
+                </div>
+                <div class="h-48">
+                    <canvas id="hoursDistChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Punctuality Score -->
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-semibold text-gray-800">Team Punctuality</h3>
+                    <span class="text-xs text-gray-400">On-time rate</span>
+                </div>
+                <div class="h-48 flex items-center justify-center">
+                    <canvas id="punctualityChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Employee Performance Table -->
+        <div class="card mb-6">
+            <div class="p-5 border-b">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-gray-800">Employee Performance</h3>
+                    <div class="flex items-center space-x-2 no-print">
+                        <input type="text" id="search-employee" placeholder="Search employee..." 
+                            class="px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 w-48">
+                        <select id="sort-by" class="px-3 py-1.5 border rounded-lg text-sm">
+                            <option value="name">Sort by Name</option>
+                            <option value="attendance">Sort by Attendance</option>
+                            <option value="punctuality">Sort by Punctuality</option>
+                            <option value="hours">Sort by Hours</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full table-hover">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
+                            <th class="px-5 py-3 text-center text-xs font-medium text-gray-500 uppercase">Days Present</th>
+                            <th class="px-5 py-3 text-center text-xs font-medium text-gray-500 uppercase">Days Absent</th>
+                            <th class="px-5 py-3 text-center text-xs font-medium text-gray-500 uppercase">Late Days</th>
+                            <th class="px-5 py-3 text-center text-xs font-medium text-gray-500 uppercase">Attendance %</th>
+                            <th class="px-5 py-3 text-center text-xs font-medium text-gray-500 uppercase">Punctuality</th>
+                            <th class="px-5 py-3 text-center text-xs font-medium text-gray-500 uppercase">Avg Hours</th>
+                            <th class="px-5 py-3 text-center text-xs font-medium text-gray-500 uppercase">Total Hours</th>
+                            <th class="px-5 py-3 text-center text-xs font-medium text-gray-500 uppercase no-print">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="employee-table" class="divide-y divide-gray-200">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Employee Detail Modal -->
+        <div id="employee-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 no-print">
+            <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
+                <div class="gradient-bg text-white p-5">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-4">
+                            <div class="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold" id="modal-avatar">
+                                --
+                            </div>
+                            <div>
+                                <h3 id="modal-name" class="text-xl font-bold">Employee Name</h3>
+                                <p id="modal-pin" class="text-white/70 text-sm">PIN: ---</p>
+                            </div>
+                        </div>
+                        <button onclick="closeModal()" class="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="p-5 overflow-y-auto max-h-[calc(90vh-100px)]">
+                    <!-- Employee Stats -->
+                    <div class="grid grid-cols-4 gap-4 mb-6">
+                        <div class="bg-green-50 rounded-lg p-4 text-center">
+                            <p class="text-2xl font-bold text-green-600" id="modal-present">-</p>
+                            <p class="text-xs text-gray-500">Days Present</p>
+                        </div>
+                        <div class="bg-red-50 rounded-lg p-4 text-center">
+                            <p class="text-2xl font-bold text-red-600" id="modal-absent">-</p>
+                            <p class="text-xs text-gray-500">Days Absent</p>
+                        </div>
+                        <div class="bg-amber-50 rounded-lg p-4 text-center">
+                            <p class="text-2xl font-bold text-amber-600" id="modal-late">-</p>
+                            <p class="text-xs text-gray-500">Late Days</p>
+                        </div>
+                        <div class="bg-blue-50 rounded-lg p-4 text-center">
+                            <p class="text-2xl font-bold text-blue-600" id="modal-hours">-</p>
+                            <p class="text-xs text-gray-500">Total Hours</p>
+                        </div>
+                    </div>
+
+                    <!-- Performance Metrics -->
+                    <div class="grid grid-cols-2 gap-6 mb-6">
+                        <div>
+                            <h4 class="text-sm font-semibold text-gray-700 mb-3">Attendance Rate</h4>
+                            <div class="flex items-center space-x-3">
+                                <div class="flex-1 progress-bar">
+                                    <div id="modal-attendance-bar" class="progress-fill bg-green-500" style="width: 0%"></div>
+                                </div>
+                                <span id="modal-attendance-pct" class="text-lg font-bold text-green-600">--%</span>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-semibold text-gray-700 mb-3">Punctuality Rate</h4>
+                            <div class="flex items-center space-x-3">
+                                <div class="flex-1 progress-bar">
+                                    <div id="modal-punctuality-bar" class="progress-fill bg-blue-500" style="width: 0%"></div>
+                                </div>
+                                <span id="modal-punctuality-pct" class="text-lg font-bold text-blue-600">--%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Daily Attendance Chart -->
+                    <div class="mb-6">
+                        <h4 class="text-sm font-semibold text-gray-700 mb-3">Daily Attendance Pattern</h4>
+                        <div class="h-48">
+                            <canvas id="modal-daily-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Log Table -->
+                    <div>
+                        <h4 class="text-sm font-semibold text-gray-700 mb-3">Attendance Records</h4>
+                        <div class="max-h-64 overflow-y-auto border rounded-lg">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-50 sticky top-0">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Date</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-500">First In</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-500">Last Out</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-500">Hours</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-500">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="modal-logs-table" class="divide-y divide-gray-100">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        // Configuration
+        const WORK_START = '09:00';
+        const WORK_END = '17:00';
+        const STANDARD_HOURS = 8;
+
+        // Data storage
+        let employees = [];
+        let allLogs = [];
+        let reportData = {};
+        let modalChart = null;
+
+        // Chart instances
+        let dailyTrendChart = null;
+        let distributionChart = null;
+        let arrivalByDayChart = null;
+        let hoursDistChart = null;
+        let punctualityChart = null;
+
+        // Set default month to current month
+        const now = new Date();
+        document.getElementById('selected-month').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+        // Period type change handler
+        document.getElementById('period-type').addEventListener('change', (e) => {
+            const monthSelector = document.getElementById('month-selector');
+            const customRange = document.getElementById('custom-range');
+            
+            if (e.target.value === 'custom') {
+                monthSelector.classList.add('hidden');
+                customRange.classList.remove('hidden');
+            } else {
+                monthSelector.classList.remove('hidden');
+                customRange.classList.add('hidden');
+            }
+        });
+
+        // Get date range based on selection
+        function getDateRange() {
+            const periodType = document.getElementById('period-type').value;
+            
+            if (periodType === 'custom') {
+                return {
+                    start: document.getElementById('start-date').value,
+                    end: document.getElementById('end-date').value
+                };
+            } else if (periodType === 'week') {
+                const monthVal = document.getElementById('selected-month').value;
+                const [year, month] = monthVal.split('-');
+                const startDate = new Date(year, month - 1, 1);
+                // Get current week
+                const today = new Date();
+                const dayOfWeek = today.getDay();
+                const start = new Date(today);
+                start.setDate(today.getDate() - dayOfWeek);
+                const end = new Date(start);
+                end.setDate(start.getDate() + 6);
+                return {
+                    start: start.toISOString().split('T')[0],
+                    end: end.toISOString().split('T')[0]
+                };
+            } else {
+                // Monthly
+                const monthVal = document.getElementById('selected-month').value;
+                const [year, month] = monthVal.split('-');
+                const startDate = new Date(year, month - 1, 1);
+                const endDate = new Date(year, month, 0);
+                return {
+                    start: startDate.toISOString().split('T')[0],
+                    end: endDate.toISOString().split('T')[0]
+                };
+            }
+        }
+
+        // Load report data
+        async function loadReport() {
+            const range = getDateRange();
+            
+            try {
+                // Fetch employees and logs
+                const [empRes, logsRes] = await Promise.all([
+                    fetch('/api/employees'),
+                    fetch('/api/logs')
+                ]);
+                
+                const empData = await empRes.json();
+                const logsData = await logsRes.json();
+                
+                employees = empData.employees || [];
+                allLogs = logsData.logs || [];
+                
+                // Process report data
+                processReportData(range);
+                updateUI();
+                updateCharts();
+                
+            } catch (error) {
+                console.error('Error loading report:', error);
+            }
+        }
+
+        // Process report data
+        function processReportData(range) {
+            const { start, end } = range;
+            const startDate = new Date(start);
+            const endDate = new Date(end);
+            
+            // Calculate working days (excluding weekends)
+            let workingDays = 0;
+            const dateList = [];
+            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                const day = d.getDay();
+                if (day !== 0 && day !== 6) { // Not Sunday or Saturday
+                    workingDays++;
+                    dateList.push(d.toISOString().split('T')[0]);
+                }
+            }
+
+            // Filter logs for the period
+            const periodLogs = allLogs.filter(log => {
+                const logDate = log.DateTime ? log.DateTime.split(' ')[0] : '';
+                return logDate >= start && logDate <= end;
+            });
+
+            // Process each employee
+            const employeeStats = {};
+            
+            employees.forEach(emp => {
+                employeeStats[emp.pin] = {
+                    pin: emp.pin,
+                    name: emp.name,
+                    department: emp.department || 'General',
+                    daysPresent: 0,
+                    daysAbsent: 0,
+                    daysLate: 0,
+                    totalHours: 0,
+                    dailyRecords: {},
+                    arrivalTimes: [],
+                    departureTimes: []
+                };
+            });
+
+            // Group logs by employee and date
+            periodLogs.forEach(log => {
+                const pin = log.PIN;
+                const dateTime = log.DateTime || '';
+                const date = dateTime.split(' ')[0];
+                const time = dateTime.split(' ')[1] || '';
+                const punchType = log.punch_type || '';
+
+                if (!employeeStats[pin]) {
+                    employeeStats[pin] = {
+                        pin: pin,
+                        name: `Employee ${pin}`,
+                        department: 'Unknown',
+                        daysPresent: 0,
+                        daysAbsent: 0,
+                        daysLate: 0,
+                        totalHours: 0,
+                        dailyRecords: {},
+                        arrivalTimes: [],
+                        departureTimes: []
+                    };
+                }
+
+                if (!employeeStats[pin].dailyRecords[date]) {
+                    employeeStats[pin].dailyRecords[date] = {
+                        firstIn: null,
+                        lastOut: null,
+                        punches: []
+                    };
+                }
+
+                employeeStats[pin].dailyRecords[date].punches.push({ time, type: punchType });
+
+                // Track first in and last out
+                if (punchType === 'CHECK_IN' || punchType === 'OVERTIME_IN' || log.Status === '0') {
+                    if (!employeeStats[pin].dailyRecords[date].firstIn || time < employeeStats[pin].dailyRecords[date].firstIn) {
+                        employeeStats[pin].dailyRecords[date].firstIn = time;
+                    }
+                }
+                if (punchType === 'CHECK_OUT' || punchType === 'OVERTIME_OUT' || log.Status === '1') {
+                    if (!employeeStats[pin].dailyRecords[date].lastOut || time > employeeStats[pin].dailyRecords[date].lastOut) {
+                        employeeStats[pin].dailyRecords[date].lastOut = time;
+                    }
+                }
+            });
+
+            // Calculate statistics for each employee
+            Object.values(employeeStats).forEach(emp => {
+                dateList.forEach(date => {
+                    const record = emp.dailyRecords[date];
+                    
+                    if (record && record.firstIn) {
+                        emp.daysPresent++;
+                        emp.arrivalTimes.push(record.firstIn);
+                        
+                        // Check if late
+                        if (record.firstIn > WORK_START) {
+                            emp.daysLate++;
+                        }
+                        
+                        // Calculate hours worked
+                        if (record.lastOut) {
+                            emp.departureTimes.push(record.lastOut);
+                            const inParts = record.firstIn.split(':');
+                            const outParts = record.lastOut.split(':');
+                            const inMins = parseInt(inParts[0]) * 60 + parseInt(inParts[1]);
+                            const outMins = parseInt(outParts[0]) * 60 + parseInt(outParts[1]);
+                            const hours = (outMins - inMins) / 60;
+                            if (hours > 0) {
+                                emp.totalHours += hours;
+                                record.hours = hours.toFixed(1);
+                            }
+                        }
+                    } else {
+                        emp.daysAbsent++;
+                    }
+                });
+
+                // Calculate averages
+                emp.avgHours = emp.daysPresent > 0 ? (emp.totalHours / emp.daysPresent).toFixed(1) : 0;
+                emp.attendanceRate = workingDays > 0 ? Math.round((emp.daysPresent / workingDays) * 100) : 0;
+                emp.punctualityRate = emp.daysPresent > 0 ? Math.round(((emp.daysPresent - emp.daysLate) / emp.daysPresent) * 100) : 0;
+            });
+
+            // Store report data
+            reportData = {
+                range: range,
+                workingDays: workingDays,
+                dateList: dateList,
+                employees: Object.values(employeeStats),
+                periodLogs: periodLogs
+            };
+        }
+
+        // Update UI with report data
+        function updateUI() {
+            if (!reportData.employees) return;
+
+            const empList = reportData.employees;
+            const workingDays = reportData.workingDays;
+
+            // Update summary stats
+            document.getElementById('stat-total-employees').textContent = empList.length;
+            document.getElementById('stat-working-days').textContent = workingDays;
+            
+            const totalPresent = empList.reduce((sum, e) => sum + e.daysPresent, 0);
+            const totalPossible = empList.length * workingDays;
+            const avgAttendance = totalPossible > 0 ? Math.round((totalPresent / totalPossible) * 100) : 0;
+            document.getElementById('stat-avg-attendance').textContent = avgAttendance + '%';
+            
+            const totalLate = empList.reduce((sum, e) => sum + e.daysLate, 0);
+            document.getElementById('stat-late-arrivals').textContent = totalLate;
+            
+            const totalHours = empList.reduce((sum, e) => sum + e.totalHours, 0);
+            const avgHours = totalPresent > 0 ? (totalHours / totalPresent).toFixed(1) : 0;
+            document.getElementById('stat-avg-hours').textContent = avgHours + ' hrs';
+            
+            document.getElementById('stat-total-punches').textContent = reportData.periodLogs.length;
+
+            // Update employee table
+            updateEmployeeTable(empList);
+            
+            // Re-init icons
+            lucide.createIcons();
+        }
+
+        // Update employee table
+        function updateEmployeeTable(empList) {
+            const tbody = document.getElementById('employee-table');
+            const sortBy = document.getElementById('sort-by').value;
+            const search = document.getElementById('search-employee').value.toLowerCase();
+
+            // Sort employees
+            let sorted = [...empList];
+            switch(sortBy) {
+                case 'attendance':
+                    sorted.sort((a, b) => b.attendanceRate - a.attendanceRate);
+                    break;
+                case 'punctuality':
+                    sorted.sort((a, b) => b.punctualityRate - a.punctualityRate);
+                    break;
+                case 'hours':
+                    sorted.sort((a, b) => b.totalHours - a.totalHours);
+                    break;
+                default:
+                    sorted.sort((a, b) => a.name.localeCompare(b.name));
+            }
+
+            // Filter by search
+            if (search) {
+                sorted = sorted.filter(e => e.name.toLowerCase().includes(search) || e.pin.includes(search));
+            }
+
+            if (sorted.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="9" class="px-6 py-8 text-center text-gray-500">
+                            <i data-lucide="users" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
+                            <p>No employee data found for the selected period</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = sorted.map(emp => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-5 py-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-9 h-9 bg-purple-100 rounded-full flex items-center justify-center">
+                                <span class="text-purple-600 font-semibold text-sm">${emp.name.charAt(0).toUpperCase()}</span>
+                            </div>
+                            <div>
+                                <p class="font-medium text-gray-800">${emp.name}</p>
+                                <p class="text-xs text-gray-400">PIN: ${emp.pin}</p>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-5 py-4 text-center">
+                        <span class="font-semibold text-green-600">${emp.daysPresent}</span>
+                        <span class="text-gray-400 text-xs">/ ${reportData.workingDays}</span>
+                    </td>
+                    <td class="px-5 py-4 text-center">
+                        <span class="font-semibold ${emp.daysAbsent > 0 ? 'text-red-600' : 'text-gray-400'}">${emp.daysAbsent}</span>
+                    </td>
+                    <td class="px-5 py-4 text-center">
+                        <span class="font-semibold ${emp.daysLate > 0 ? 'text-amber-600' : 'text-gray-400'}">${emp.daysLate}</span>
+                    </td>
+                    <td class="px-5 py-4 text-center">
+                        <div class="flex items-center justify-center space-x-2">
+                            <div class="w-16 progress-bar">
+                                <div class="progress-fill ${getAttendanceColor(emp.attendanceRate)}" style="width: ${emp.attendanceRate}%"></div>
+                            </div>
+                            <span class="text-sm font-medium">${emp.attendanceRate}%</span>
+                        </div>
+                    </td>
+                    <td class="px-5 py-4 text-center">
+                        <span class="badge ${getPunctualityBadge(emp.punctualityRate)}">${emp.punctualityRate}%</span>
+                    </td>
+                    <td class="px-5 py-4 text-center font-medium">${emp.avgHours} hrs</td>
+                    <td class="px-5 py-4 text-center font-medium">${emp.totalHours.toFixed(1)} hrs</td>
+                    <td class="px-5 py-4 text-center no-print">
+                        <button onclick="showEmployeeDetail('${emp.pin}')" class="text-purple-600 hover:text-purple-800">
+                            <i data-lucide="eye" class="w-4 h-4"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function getAttendanceColor(rate) {
+            if (rate >= 90) return 'bg-green-500';
+            if (rate >= 75) return 'bg-amber-500';
+            return 'bg-red-500';
+        }
+
+        function getPunctualityBadge(rate) {
+            if (rate >= 90) return 'badge-green';
+            if (rate >= 75) return 'badge-amber';
+            return 'badge-red';
+        }
+
+        // Initialize charts
+        function initCharts() {
+            // Daily Trend Chart
+            const dailyCtx = document.getElementById('dailyTrendChart').getContext('2d');
+            dailyTrendChart = new Chart(dailyCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Present',
+                        data: [],
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }, {
+                        label: 'Late',
+                        data: [],
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { beginAtZero: true, grid: { color: '#f3f4f6' } }
+                    }
+                }
+            });
+
+            // Distribution Chart
+            const distCtx = document.getElementById('distributionChart').getContext('2d');
+            distributionChart = new Chart(distCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['On Time', 'Late', 'Absent'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '60%',
+                    plugins: {
+                        legend: { position: 'right', labels: { boxWidth: 12, padding: 15 } }
+                    }
+                }
+            });
+
+            // Arrival by Day Chart
+            const arrivalCtx = document.getElementById('arrivalByDayChart').getContext('2d');
+            arrivalByDayChart = new Chart(arrivalCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+                    datasets: [{
+                        label: 'Avg Arrival (mins after 9am)',
+                        data: [0, 0, 0, 0, 0],
+                        backgroundColor: '#667eea',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { beginAtZero: true, grid: { color: '#f3f4f6' } }
+                    }
+                }
+            });
+
+            // Hours Distribution Chart
+            const hoursCtx = document.getElementById('hoursDistChart').getContext('2d');
+            hoursDistChart = new Chart(hoursCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['<6h', '6-7h', '7-8h', '8-9h', '9h+'],
+                    datasets: [{
+                        label: 'Days',
+                        data: [0, 0, 0, 0, 0],
+                        backgroundColor: ['#ef4444', '#f59e0b', '#eab308', '#10b981', '#06b6d4'],
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { beginAtZero: true, grid: { color: '#f3f4f6' } }
+                    }
+                }
+            });
+
+            // Punctuality Chart
+            const punctCtx = document.getElementById('punctualityChart').getContext('2d');
+            punctualityChart = new Chart(punctCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['On Time', 'Late'],
+                    datasets: [{
+                        data: [0, 0],
+                        backgroundColor: ['#10b981', '#f59e0b'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 10, padding: 10, font: { size: 10 } } }
+                    }
+                }
+            });
+        }
+
+        // Update charts with data
+        function updateCharts() {
+            if (!reportData.employees || !reportData.dateList) return;
+
+            const empList = reportData.employees;
+            const dateList = reportData.dateList;
+
+            // Update Daily Trend Chart
+            const dailyPresent = [];
+            const dailyLate = [];
+            const labels = dateList.map(d => {
+                const date = new Date(d);
+                return `${date.getMonth() + 1}/${date.getDate()}`;
+            });
+
+            dateList.forEach(date => {
+                let present = 0;
+                let late = 0;
+                empList.forEach(emp => {
+                    const record = emp.dailyRecords[date];
+                    if (record && record.firstIn) {
+                        present++;
+                        if (record.firstIn > WORK_START) late++;
+                    }
+                });
+                dailyPresent.push(present);
+                dailyLate.push(late);
+            });
+
+            dailyTrendChart.data.labels = labels;
+            dailyTrendChart.data.datasets[0].data = dailyPresent;
+            dailyTrendChart.data.datasets[1].data = dailyLate;
+            dailyTrendChart.update();
+
+            // Update Distribution Chart
+            const totalOnTime = empList.reduce((sum, e) => sum + (e.daysPresent - e.daysLate), 0);
+            const totalLate = empList.reduce((sum, e) => sum + e.daysLate, 0);
+            const totalAbsent = empList.reduce((sum, e) => sum + e.daysAbsent, 0);
+            
+            distributionChart.data.datasets[0].data = [totalOnTime, totalLate, totalAbsent];
+            distributionChart.update();
+
+            // Update Punctuality Chart
+            punctualityChart.data.datasets[0].data = [totalOnTime, totalLate];
+            punctualityChart.update();
+
+            // Update Hours Distribution
+            const hoursBuckets = [0, 0, 0, 0, 0]; // <6, 6-7, 7-8, 8-9, 9+
+            empList.forEach(emp => {
+                Object.values(emp.dailyRecords).forEach(record => {
+                    if (record.hours) {
+                        const h = parseFloat(record.hours);
+                        if (h < 6) hoursBuckets[0]++;
+                        else if (h < 7) hoursBuckets[1]++;
+                        else if (h < 8) hoursBuckets[2]++;
+                        else if (h < 9) hoursBuckets[3]++;
+                        else hoursBuckets[4]++;
+                    }
+                });
+            });
+            hoursDistChart.data.datasets[0].data = hoursBuckets;
+            hoursDistChart.update();
+
+            // Update Arrival by Day
+            const dayArrivals = { 1: [], 2: [], 3: [], 4: [], 5: [] }; // Mon-Fri
+            empList.forEach(emp => {
+                Object.entries(emp.dailyRecords).forEach(([date, record]) => {
+                    if (record.firstIn) {
+                        const dayOfWeek = new Date(date).getDay();
+                        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                            const [h, m] = record.firstIn.split(':');
+                            const minsFrom9 = (parseInt(h) * 60 + parseInt(m)) - (9 * 60);
+                            dayArrivals[dayOfWeek].push(minsFrom9);
+                        }
+                    }
+                });
+            });
+            
+            const avgByDay = [1, 2, 3, 4, 5].map(day => {
+                const arr = dayArrivals[day];
+                return arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+            });
+            arrivalByDayChart.data.datasets[0].data = avgByDay;
+            arrivalByDayChart.update();
+        }
+
+        // Show employee detail modal
+        function showEmployeeDetail(pin) {
+            const emp = reportData.employees.find(e => e.pin === pin);
+            if (!emp) return;
+
+            // Update modal header
+            document.getElementById('modal-avatar').textContent = emp.name.charAt(0).toUpperCase();
+            document.getElementById('modal-name').textContent = emp.name;
+            document.getElementById('modal-pin').textContent = `PIN: ${emp.pin}`;
+
+            // Update stats
+            document.getElementById('modal-present').textContent = emp.daysPresent;
+            document.getElementById('modal-absent').textContent = emp.daysAbsent;
+            document.getElementById('modal-late').textContent = emp.daysLate;
+            document.getElementById('modal-hours').textContent = emp.totalHours.toFixed(1);
+
+            // Update progress bars
+            document.getElementById('modal-attendance-bar').style.width = emp.attendanceRate + '%';
+            document.getElementById('modal-attendance-pct').textContent = emp.attendanceRate + '%';
+            document.getElementById('modal-punctuality-bar').style.width = emp.punctualityRate + '%';
+            document.getElementById('modal-punctuality-pct').textContent = emp.punctualityRate + '%';
+
+            // Update logs table
+            const logsTable = document.getElementById('modal-logs-table');
+            const records = Object.entries(emp.dailyRecords)
+                .sort((a, b) => b[0].localeCompare(a[0]))
+                .slice(0, 30);
+
+            logsTable.innerHTML = records.map(([date, record]) => {
+                const isPresent = record.firstIn !== null;
+                const isLate = record.firstIn && record.firstIn > WORK_START;
+                
+                return `
+                    <tr>
+                        <td class="px-4 py-2 font-medium">${formatDate(date)}</td>
+                        <td class="px-4 py-2 text-center ${isLate ? 'text-amber-600' : ''}">${record.firstIn || '-'}</td>
+                        <td class="px-4 py-2 text-center">${record.lastOut || '-'}</td>
+                        <td class="px-4 py-2 text-center">${record.hours || '-'}</td>
+                        <td class="px-4 py-2 text-center">
+                            ${isPresent ? 
+                                (isLate ? '<span class="badge badge-amber">Late</span>' : '<span class="badge badge-green">On Time</span>') 
+                                : '<span class="badge badge-red">Absent</span>'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Update modal chart
+            updateModalChart(emp);
+
+            // Show modal
+            document.getElementById('employee-modal').classList.remove('hidden');
+            document.getElementById('employee-modal').classList.add('flex');
+            lucide.createIcons();
+        }
+
+        function updateModalChart(emp) {
+            const ctx = document.getElementById('modal-daily-chart').getContext('2d');
+            
+            if (modalChart) {
+                modalChart.destroy();
+            }
+
+            const dates = reportData.dateList.slice(-14); // Last 14 days
+            const hoursData = dates.map(date => {
+                const record = emp.dailyRecords[date];
+                return record && record.hours ? parseFloat(record.hours) : 0;
+            });
+
+            modalChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: dates.map(d => {
+                        const date = new Date(d);
+                        return `${date.getMonth() + 1}/${date.getDate()}`;
+                    }),
+                    datasets: [{
+                        label: 'Hours',
+                        data: hoursData,
+                        backgroundColor: hoursData.map(h => h >= 8 ? '#10b981' : h > 0 ? '#f59e0b' : '#ef4444'),
+                        borderRadius: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { beginAtZero: true, max: 12, grid: { color: '#f3f4f6' } }
+                    }
+                }
+            });
+        }
+
+        function closeModal() {
+            document.getElementById('employee-modal').classList.add('hidden');
+            document.getElementById('employee-modal').classList.remove('flex');
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            return `${days[date.getDay()]} ${date.getMonth() + 1}/${date.getDate()}`;
+        }
+
+        // Export functions
+        function exportReport(format) {
+            if (format === 'csv') {
+                exportCSV();
+            } else {
+                window.print();
+            }
+        }
+
+        function exportCSV() {
+            if (!reportData.employees) return;
+
+            const range = getDateRange();
+            let csv = 'Employee Report - ' + range.start + ' to ' + range.end + '\n\n';
+            csv += 'PIN,Name,Days Present,Days Absent,Late Days,Attendance %,Punctuality %,Avg Hours,Total Hours\n';
+            
+            reportData.employees.forEach(emp => {
+                csv += `${emp.pin},"${emp.name}",${emp.daysPresent},${emp.daysAbsent},${emp.daysLate},${emp.attendanceRate}%,${emp.punctualityRate}%,${emp.avgHours},${emp.totalHours.toFixed(1)}\n`;
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `attendance_report_${range.start}_${range.end}.csv`;
+            a.click();
+        }
+
+        // Event listeners
+        document.getElementById('search-employee').addEventListener('input', () => {
+            updateEmployeeTable(reportData.employees || []);
+            lucide.createIcons();
+        });
+
+        document.getElementById('sort-by').addEventListener('change', () => {
+            updateEmployeeTable(reportData.employees || []);
+            lucide.createIcons();
+        });
+
+        // Close modal on backdrop click
+        document.getElementById('employee-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'employee-modal') {
+                closeModal();
+            }
+        });
+
+        // Initialize
+        initCharts();
+        loadReport();
+    </script>
+</body>
+</html>
