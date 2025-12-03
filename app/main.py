@@ -344,8 +344,25 @@ async def cdata(request: Request):
                     log_data["received_at"] = datetime.now().isoformat()
                     log_data["raw_line"] = line  # Store raw for debugging
                     
+                    # Store in memory
                     attendance_logs.append(log_data)
-                    logger.info(f"   ✅ STORED: {log_data}")
+                    logger.info(f"   ✅ STORED IN MEMORY: {log_data}")
+                    
+                    # Save to database for persistence
+                    if log_data.get("PIN"):
+                        try:
+                            db.add_attendance_log({
+                                "pin": log_data.get("PIN"),
+                                "device_sn": SN,
+                                "punch_time": log_data.get("DateTime", datetime.now().isoformat()).replace(" ", "T"),
+                                "punch_type": log_data.get("punch_type"),
+                                "verify_method": log_data.get("verify_method"),
+                                "work_code": log_data.get("WorkCode"),
+                                "raw_data": str(log_data)
+                            })
+                            logger.info(f"   💾 SAVED TO DATABASE: PIN={log_data.get('PIN')}")
+                        except Exception as e:
+                            logger.error(f"   ❌ Database save failed: {e}")
         
         return "OK"
     
@@ -460,11 +477,36 @@ async def list_devices():
 
 @app.get("/api/logs")
 async def list_logs():
-    """API endpoint to view attendance logs"""
-    return {
-        "logs": attendance_logs[-50:],  # Last 50 logs
-        "total": len(attendance_logs)
-    }
+    """API endpoint to view attendance logs from database"""
+    try:
+        # Get logs from database (persistent)
+        db_logs = db.get_attendance_logs(limit=50)
+        
+        # Also include recent in-memory logs (for real-time display)
+        combined_logs = db_logs + attendance_logs[-10:]
+        
+        # Remove duplicates and sort by time
+        seen = set()
+        unique_logs = []
+        for log in reversed(combined_logs):
+            log_key = f"{log.get('pin')}_{log.get('punch_time')}"
+            if log_key not in seen:
+                seen.add(log_key)
+                unique_logs.append(log)
+        
+        return {
+            "logs": list(reversed(unique_logs))[:50],
+            "total": len(db_logs),
+            "source": "database + memory"
+        }
+    except Exception as e:
+        logger.error(f"Error fetching logs: {e}")
+        # Fallback to memory if database fails
+        return {
+            "logs": attendance_logs[-50:],
+            "total": len(attendance_logs),
+            "source": "memory_only"
+        }
 
 
 @app.post("/api/logs/clear")
