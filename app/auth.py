@@ -256,28 +256,36 @@ def get_user_response(user: dict) -> UserResponse:
 
 def create_default_admin():
     """Create a default admin user if none exists"""
-    db = get_database()
+    import logging
+    logger = logging.getLogger(__name__)
     
-    # Check if any superuser exists
-    users = db.get_all_users()
-    if any(user.get("is_superuser") for user in users):
+    try:
+        db = get_database()
+        
+        # Check if any superuser exists
+        users = db.get_all_users()
+        if any(user.get("is_superuser") for user in users):
+            return None
+        
+        # Create default admin
+        admin_user = {
+            "username": "admin",
+            "email": "admin@example.com",
+            "password_hash": hash_password("admin123"),
+            "full_name": "System Administrator",
+            "is_active": True,
+            "is_superuser": True
+        }
+        
+        user = db.create_user(admin_user)
+        
+        # Assign admin role
+        admin_role = db.get_role_by_name("admin")
+        if admin_role:
+            db.assign_role_to_user(user["id"], admin_role["id"])
+        
+        return user
+    except Exception as e:
+        logger.error(f"Failed to create default admin: {e}")
+        logger.warning("App will start without default admin - check database connection")
         return None
-    
-    # Create default admin
-    admin_user = {
-        "username": "admin",
-        "email": "admin@example.com",
-        "password_hash": hash_password("admin123"),
-        "full_name": "System Administrator",
-        "is_active": True,
-        "is_superuser": True
-    }
-    
-    user = db.create_user(admin_user)
-    
-    # Assign admin role
-    admin_role = db.get_role_by_name("admin")
-    if admin_role:
-        db.assign_role_to_user(user["id"], admin_role["id"])
-    
-    return user

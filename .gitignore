@@ -29,7 +29,6 @@ ENV/
 # Environment Variables
 .env
 .env.local
-.env.example
 
 # IDE
 .vscode/
@@ -60,4 +59,3 @@ htmlcov/
 # Temporary files
 *.tmp
 temp/
-.env.example
