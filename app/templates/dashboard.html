@@ -138,12 +138,66 @@
     </nav>
 
     <main class="max-w-7xl mx-auto px-4 py-8">
-        <!-- Date Selector -->
-        <div class="flex items-center justify-between mb-8">
-            <div class="flex items-center space-x-4">
-                <h2 class="text-2xl font-semibold text-gray-800">Dashboard</h2>
-                <input type="date" id="date-selector" class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+        <!-- Clock & Date Header -->
+        <div class="card p-6 mb-6 gradient-bg text-white">
+            <div class="flex items-center justify-between">
+                <!-- Clock Display -->
+                <div class="flex items-center space-x-8">
+                    <!-- Digital Clock -->
+                    <div id="digital-clock-container" class="text-center">
+                        <div id="digital-time" class="text-5xl font-bold tracking-wide">--:--:--</div>
+                        <div id="digital-date" class="text-lg opacity-80 mt-1">Loading...</div>
+                        <div id="timezone-display" class="text-sm opacity-60 mt-1">--</div>
+                    </div>
+                    
+                    <!-- Analog Clock -->
+                    <div id="analog-clock-container" class="hidden">
+                        <div class="relative w-32 h-32">
+                            <svg viewBox="0 0 100 100" class="w-full h-full">
+                                <!-- Clock face -->
+                                <circle cx="50" cy="50" r="48" fill="rgba(255,255,255,0.1)" stroke="white" stroke-width="2"/>
+                                <!-- Hour markers -->
+                                <g stroke="white" stroke-width="2">
+                                    <line x1="50" y1="5" x2="50" y2="12"/>
+                                    <line x1="50" y1="88" x2="50" y2="95"/>
+                                    <line x1="5" y1="50" x2="12" y2="50"/>
+                                    <line x1="88" y1="50" x2="95" y2="50"/>
+                                </g>
+                                <!-- Hour hand -->
+                                <line id="hour-hand" x1="50" y1="50" x2="50" y2="28" stroke="white" stroke-width="4" stroke-linecap="round"/>
+                                <!-- Minute hand -->
+                                <line id="minute-hand" x1="50" y1="50" x2="50" y2="18" stroke="white" stroke-width="3" stroke-linecap="round"/>
+                                <!-- Second hand -->
+                                <line id="second-hand" x1="50" y1="50" x2="50" y2="15" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round"/>
+                                <!-- Center dot -->
+                                <circle cx="50" cy="50" r="3" fill="#fbbf24"/>
+                            </svg>
+                        </div>
+                        <div id="analog-date" class="text-center text-sm opacity-80 mt-2">Loading...</div>
+                    </div>
+                </div>
+                
+                <!-- Clock Controls & Actions -->
+                <div class="flex items-center space-x-4">
+                    <!-- Clock Type Toggle -->
+                    <div class="flex items-center space-x-2 bg-white bg-opacity-10 rounded-lg p-1">
+                        <button id="btn-digital" onclick="setClockType('digital')" class="px-3 py-1.5 rounded-md text-sm font-medium bg-white bg-opacity-20">
+                            Digital
+                        </button>
+                        <button id="btn-analog" onclick="setClockType('analog')" class="px-3 py-1.5 rounded-md text-sm font-medium hover:bg-white hover:bg-opacity-10">
+                            Analog
+                        </button>
+                    </div>
+                    
+                    <!-- Date Selector -->
+                    <input type="date" id="date-selector" class="px-4 py-2 bg-white bg-opacity-10 border border-white border-opacity-20 rounded-lg text-white placeholder-white placeholder-opacity-60 focus:ring-2 focus:ring-white focus:border-transparent">
+                </div>
             </div>
+        </div>
+        
+        <!-- Dashboard Header -->
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-2xl font-semibold text-gray-800">Dashboard</h2>
             <div class="flex items-center space-x-3">
                 <button onclick="exportReport()" class="flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition">
                     <i data-lucide="download" class="w-4 h-4"></i>
@@ -995,8 +1049,115 @@
             window.location.href = '/login';
         });
         
+        // ============ CLOCK FUNCTIONALITY ============
+        let clockType = localStorage.getItem('clockType') || 'digital';
+        let serverTimeOffset = 0; // Offset between server and client time
+        let serverTimezone = 'UTC';
+        
+        // Fetch server time to sync
+        async function fetchServerTime() {
+            try {
+                const response = await fetch('/api/server-time');
+                if (response.ok) {
+                    const data = await response.json();
+                    const serverTime = new Date(data.datetime);
+                    const clientTime = new Date();
+                    serverTimeOffset = serverTime - clientTime;
+                    serverTimezone = data.timezone || 'UTC';
+                    document.getElementById('timezone-display').textContent = serverTimezone;
+                }
+            } catch (error) {
+                console.error('Failed to fetch server time:', error);
+            }
+        }
+        
+        // Get current time adjusted for server offset
+        function getAdjustedTime() {
+            return new Date(Date.now() + serverTimeOffset);
+        }
+        
+        // Update digital clock
+        function updateDigitalClock() {
+            const now = getAdjustedTime();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            
+            document.getElementById('digital-time').textContent = `${hours}:${minutes}:${seconds}`;
+            
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('digital-date').textContent = now.toLocaleDateString('en-US', options);
+        }
+        
+        // Update analog clock
+        function updateAnalogClock() {
+            const now = getAdjustedTime();
+            const hours = now.getHours() % 12;
+            const minutes = now.getMinutes();
+            const seconds = now.getSeconds();
+            
+            // Calculate rotation angles
+            const hourAngle = (hours * 30) + (minutes * 0.5); // 30 degrees per hour + 0.5 per minute
+            const minuteAngle = minutes * 6; // 6 degrees per minute
+            const secondAngle = seconds * 6; // 6 degrees per second
+            
+            // Update hand rotations
+            document.getElementById('hour-hand').setAttribute('transform', `rotate(${hourAngle} 50 50)`);
+            document.getElementById('minute-hand').setAttribute('transform', `rotate(${minuteAngle} 50 50)`);
+            document.getElementById('second-hand').setAttribute('transform', `rotate(${secondAngle} 50 50)`);
+            
+            // Update analog date
+            const options = { month: 'short', day: 'numeric', year: 'numeric' };
+            document.getElementById('analog-date').textContent = now.toLocaleDateString('en-US', options);
+        }
+        
+        // Update both clocks
+        function updateClock() {
+            updateDigitalClock();
+            updateAnalogClock();
+        }
+        
+        // Set clock type
+        function setClockType(type) {
+            clockType = type;
+            localStorage.setItem('clockType', type);
+            
+            const digitalContainer = document.getElementById('digital-clock-container');
+            const analogContainer = document.getElementById('analog-clock-container');
+            const btnDigital = document.getElementById('btn-digital');
+            const btnAnalog = document.getElementById('btn-analog');
+            
+            if (type === 'digital') {
+                digitalContainer.classList.remove('hidden');
+                analogContainer.classList.add('hidden');
+                btnDigital.classList.add('bg-white', 'bg-opacity-20');
+                btnAnalog.classList.remove('bg-white', 'bg-opacity-20');
+            } else {
+                digitalContainer.classList.add('hidden');
+                analogContainer.classList.remove('hidden');
+                btnAnalog.classList.add('bg-white', 'bg-opacity-20');
+                btnDigital.classList.remove('bg-white', 'bg-opacity-20');
+            }
+        }
+        
+        // Initialize clock
+        function initClock() {
+            setClockType(clockType);
+            fetchServerTime();
+            updateClock();
+            setInterval(updateClock, 1000);
+            // Re-sync with server every 5 minutes
+            setInterval(fetchServerTime, 300000);
+        }
+        
+        // Make setClockType available globally
+        window.setClockType = setClockType;
+        
+        // ============ END CLOCK FUNCTIONALITY ============
+        
         // Initial load
         async function init() {
+            initClock();
             const isAuthenticated = await checkAuth();
             if (isAuthenticated) {
                 await fetchEmployeeNames();

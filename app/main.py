@@ -5,9 +5,10 @@ ADMS Protocol Server for ZKTeco K60 Devices
 from typing import Optional
 from fastapi import FastAPI, Request, Query, Depends, HTTPException, status
 from fastapi.responses import PlainTextResponse, HTMLResponse, FileResponse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import os
+from zoneinfo import ZoneInfo
 
 from app.config import get_settings
 from app.database import get_database
@@ -42,6 +43,17 @@ device_registry = {}
 attendance_logs = []
 device_commands = {}
 debug_requests = []  # Store all device requests for debugging
+
+
+def get_local_time() -> datetime:
+    """Get current time in the configured timezone (for device sync)"""
+    tz_name = settings.org_timezone or "UTC"
+    try:
+        tz = ZoneInfo(tz_name)
+        return datetime.now(tz)
+    except Exception:
+        # Fallback to UTC if timezone is invalid
+        return datetime.now(timezone.utc)
 
 
 # Startup event
@@ -397,10 +409,14 @@ async def cdata(request: Request):
         
         return "OK"
     
-    # Handle options/config
+    # Handle options/config - RETURN LOCAL TIME FOR DEVICE SYNC
     if table == "options":
         logger.info(f"⚙️  Device {SN} options sync")
-        return "OK"
+        # Return server time in configured timezone
+        local_time = get_local_time()
+        options_response = f"GET OPTION FROM: {SN}\r\nServerTime={local_time.strftime('%Y-%m-%d %H:%M:%S')}\r\nStamp=0"
+        logger.info(f"   Returning ServerTime: {local_time.strftime('%Y-%m-%d %H:%M:%S')} ({settings.org_timezone})")
+        return options_response
     
     # Handle FIRSTDATA - initial sync request
     if table == "FIRSTDATA":
@@ -472,6 +488,19 @@ async def list_devices():
     return {
         "devices": list(device_registry.values()),
         "total": len(device_registry)
+    }
+
+
+@app.get("/api/server-time")
+async def get_server_time():
+    """Get current server time in configured timezone (for dashboard clock sync)"""
+    local_time = get_local_time()
+    return {
+        "datetime": local_time.isoformat(),
+        "timezone": settings.org_timezone,
+        "formatted": local_time.strftime("%Y-%m-%d %H:%M:%S"),
+        "date": local_time.strftime("%Y-%m-%d"),
+        "time": local_time.strftime("%H:%M:%S")
     }
 
 
