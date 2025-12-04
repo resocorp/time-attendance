@@ -978,9 +978,23 @@ class SupabaseDatabase:
     
     def __init__(self):
         from supabase import create_client, Client
-        self.client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        logger.info(f"✅ Connected to Supabase: {SUPABASE_URL[:30]}...")
-        self._init_defaults()
+        import httpx
+        
+        # Create client with timeout configuration
+        self.client: Client = create_client(
+            SUPABASE_URL, 
+            SUPABASE_KEY,
+            options={
+                "postgrest_client_timeout": 10,  # 10 second timeout
+            }
+        )
+        logger.info(f"✅ Connected to Supabase: {SUPABASE_URL[:40]}...")
+        
+        # Initialize defaults in background - don't block startup
+        try:
+            self._init_defaults()
+        except Exception as e:
+            logger.warning(f"Could not initialize defaults (non-blocking): {e}")
     
     def _init_defaults(self):
         """Initialize default data if tables are empty"""
