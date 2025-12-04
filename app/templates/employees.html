@@ -69,10 +69,20 @@
                 <h2 class="text-2xl font-bold text-gray-800">Employee Management</h2>
                 <p class="text-gray-500">Manage employees and sync with devices</p>
             </div>
-            <button onclick="openModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
-                <i data-lucide="user-plus" class="w-5 h-5"></i>
-                <span>Add Employee</span>
-            </button>
+            <div class="flex items-center space-x-2">
+                <button onclick="exportEmployees()" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 flex items-center space-x-2 border">
+                    <i data-lucide="download" class="w-5 h-5"></i>
+                    <span>Export CSV</span>
+                </button>
+                <button onclick="openImportModal()" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 flex items-center space-x-2 border">
+                    <i data-lucide="upload" class="w-5 h-5"></i>
+                    <span>Import CSV</span>
+                </button>
+                <button onclick="openModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                    <i data-lucide="user-plus" class="w-5 h-5"></i>
+                    <span>Add Employee</span>
+                </button>
+            </div>
         </div>
 
         <!-- Search and Filter -->
@@ -267,6 +277,98 @@
                 <div class="flex justify-center space-x-3">
                     <button onclick="closeDeleteModal()" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
                     <button onclick="confirmDelete()" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import CSV Modal -->
+    <div id="importModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+            <div class="flex items-center justify-between px-6 py-4 border-b">
+                <h3 class="text-lg font-semibold">Import Employees from CSV</h3>
+                <button onclick="closeImportModal()" class="text-gray-400 hover:text-gray-600">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <!-- Template Download -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <div class="flex items-start space-x-3">
+                        <i data-lucide="info" class="w-5 h-5 text-blue-600 mt-0.5"></i>
+                        <div>
+                            <p class="text-sm text-blue-800 font-medium">CSV Format Requirements</p>
+                            <p class="text-sm text-blue-700 mt-1">Your CSV should have these columns:</p>
+                            <code class="text-xs bg-blue-100 px-2 py-1 rounded mt-2 block">pin, name, department, position, email, phone, card_number, hire_date, is_active</code>
+                            <button onclick="downloadTemplate()" class="text-blue-600 hover:text-blue-800 text-sm font-medium mt-2 flex items-center space-x-1">
+                                <i data-lucide="download" class="w-4 h-4"></i>
+                                <span>Download Template</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- File Upload -->
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition cursor-pointer" 
+                     onclick="document.getElementById('csvFile').click()"
+                     ondragover="event.preventDefault(); this.classList.add('border-blue-500', 'bg-blue-50')"
+                     ondragleave="this.classList.remove('border-blue-500', 'bg-blue-50')"
+                     ondrop="handleFileDrop(event)">
+                    <i data-lucide="file-spreadsheet" class="w-12 h-12 mx-auto text-gray-400 mb-3"></i>
+                    <p class="text-gray-600 font-medium">Drop your CSV file here</p>
+                    <p class="text-gray-400 text-sm mt-1">or click to browse</p>
+                    <input type="file" id="csvFile" accept=".csv" class="hidden" onchange="handleFileSelect(event)">
+                </div>
+
+                <!-- Selected File -->
+                <div id="selectedFile" class="hidden mt-4 p-3 bg-gray-50 rounded-lg flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <i data-lucide="file-text" class="w-5 h-5 text-green-600"></i>
+                        <span id="selectedFileName" class="text-sm font-medium text-gray-700"></span>
+                    </div>
+                    <button onclick="clearSelectedFile()" class="text-gray-400 hover:text-red-600">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- Import Options -->
+                <div class="mt-4 space-y-3">
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="skipExisting" checked class="w-4 h-4 text-blue-600 border-gray-300 rounded">
+                        <span class="text-sm text-gray-700">Skip existing PINs (don't update)</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="updateExisting" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
+                        <span class="text-sm text-gray-700">Update existing employees</span>
+                    </label>
+                </div>
+
+                <!-- Import Preview -->
+                <div id="importPreview" class="hidden mt-4">
+                    <h4 class="text-sm font-medium text-gray-700 mb-2">Preview</h4>
+                    <div class="max-h-40 overflow-auto border rounded-lg">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">PIN</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Name</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Department</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="previewTable" class="divide-y"></tbody>
+                        </table>
+                    </div>
+                    <p id="previewCount" class="text-sm text-gray-500 mt-2"></p>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex justify-end space-x-3 mt-6 pt-4 border-t">
+                    <button onclick="closeImportModal()" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button id="importBtn" onclick="importEmployees()" disabled class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
+                        <i data-lucide="upload" class="w-4 h-4"></i>
+                        <span>Import Employees</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -598,6 +700,303 @@
             setTimeout(() => {
                 toast.classList.add('translate-y-20', 'opacity-0');
             }, 3000);
+        }
+
+        // ==================== EXPORT FUNCTIONS ====================
+        
+        function exportEmployees() {
+            if (employees.length === 0) {
+                showToast('No employees to export', 'error');
+                return;
+            }
+
+            // CSV headers
+            const headers = ['pin', 'name', 'department', 'position', 'email', 'phone', 'card_number', 'hire_date', 'is_active', 'notes'];
+            
+            // Build CSV content
+            let csv = headers.join(',') + '\n';
+            
+            employees.forEach(emp => {
+                const row = headers.map(header => {
+                    let value = emp[header] ?? '';
+                    // Handle boolean
+                    if (header === 'is_active') {
+                        value = value ? 'true' : 'false';
+                    }
+                    // Escape quotes and wrap in quotes if contains comma or quote
+                    value = String(value);
+                    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                        value = '"' + value.replace(/"/g, '""') + '"';
+                    }
+                    return value;
+                });
+                csv += row.join(',') + '\n';
+            });
+
+            // Download file
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const date = new Date().toISOString().split('T')[0];
+            link.href = URL.createObjectURL(blob);
+            link.download = `employees_${date}.csv`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+            
+            showToast(`Exported ${employees.length} employees to CSV`);
+        }
+
+        function downloadTemplate() {
+            const headers = ['pin', 'name', 'department', 'position', 'email', 'phone', 'card_number', 'hire_date', 'is_active'];
+            const example = ['1001', 'John Doe', 'Engineering', 'Developer', 'john@example.com', '+1234567890', '', '2024-01-15', 'true'];
+            
+            let csv = headers.join(',') + '\n';
+            csv += example.join(',') + '\n';
+            
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'employees_template.csv';
+            link.click();
+            URL.revokeObjectURL(link.href);
+        }
+
+        // ==================== IMPORT FUNCTIONS ====================
+        
+        let parsedEmployees = [];
+
+        function openImportModal() {
+            document.getElementById('importModal').classList.add('active');
+            clearSelectedFile();
+            lucide.createIcons();
+        }
+
+        function closeImportModal() {
+            document.getElementById('importModal').classList.remove('active');
+            clearSelectedFile();
+        }
+
+        function clearSelectedFile() {
+            document.getElementById('csvFile').value = '';
+            document.getElementById('selectedFile').classList.add('hidden');
+            document.getElementById('importPreview').classList.add('hidden');
+            document.getElementById('importBtn').disabled = true;
+            parsedEmployees = [];
+        }
+
+        function handleFileDrop(event) {
+            event.preventDefault();
+            event.target.classList.remove('border-blue-500', 'bg-blue-50');
+            
+            const file = event.dataTransfer.files[0];
+            if (file && file.name.endsWith('.csv')) {
+                processCSVFile(file);
+            } else {
+                showToast('Please upload a CSV file', 'error');
+            }
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                processCSVFile(file);
+            }
+        }
+
+        function processCSVFile(file) {
+            document.getElementById('selectedFileName').textContent = file.name;
+            document.getElementById('selectedFile').classList.remove('hidden');
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                parseCSV(text);
+            };
+            reader.readAsText(file);
+            lucide.createIcons();
+        }
+
+        function parseCSV(text) {
+            const lines = text.split('\n').filter(line => line.trim());
+            if (lines.length < 2) {
+                showToast('CSV file is empty or has no data rows', 'error');
+                return;
+            }
+
+            // Parse header
+            const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+            
+            // Validate required columns
+            if (!headers.includes('pin') || !headers.includes('name')) {
+                showToast('CSV must have "pin" and "name" columns', 'error');
+                return;
+            }
+
+            // Parse data rows
+            parsedEmployees = [];
+            const existingPins = new Set(employees.map(e => e.pin));
+            
+            for (let i = 1; i < lines.length; i++) {
+                const values = parseCSVLine(lines[i]);
+                if (values.length === 0) continue;
+                
+                const emp = {};
+                headers.forEach((header, idx) => {
+                    let value = values[idx] || '';
+                    if (header === 'is_active') {
+                        value = value.toLowerCase() !== 'false' && value !== '0';
+                    }
+                    emp[header] = value;
+                });
+
+                // Skip if no PIN
+                if (!emp.pin) continue;
+
+                // Check if existing
+                emp._exists = existingPins.has(emp.pin);
+                emp._status = emp._exists ? 'existing' : 'new';
+                
+                parsedEmployees.push(emp);
+            }
+
+            if (parsedEmployees.length === 0) {
+                showToast('No valid employee data found', 'error');
+                return;
+            }
+
+            // Show preview
+            showPreview();
+            document.getElementById('importBtn').disabled = false;
+        }
+
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                
+                if (char === '"') {
+                    if (inQuotes && line[i + 1] === '"') {
+                        current += '"';
+                        i++;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current.trim());
+            return result;
+        }
+
+        function showPreview() {
+            const tbody = document.getElementById('previewTable');
+            const preview = document.getElementById('importPreview');
+            
+            const newCount = parsedEmployees.filter(e => !e._exists).length;
+            const existingCount = parsedEmployees.filter(e => e._exists).length;
+            
+            tbody.innerHTML = parsedEmployees.slice(0, 10).map(emp => `
+                <tr class="${emp._exists ? 'bg-yellow-50' : ''}">
+                    <td class="px-3 py-2 font-medium">${emp.pin}</td>
+                    <td class="px-3 py-2">${emp.name}</td>
+                    <td class="px-3 py-2 text-gray-500">${emp.department || '-'}</td>
+                    <td class="px-3 py-2">
+                        ${emp._exists ? 
+                            '<span class="text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-800">Existing</span>' :
+                            '<span class="text-xs px-2 py-0.5 rounded bg-green-100 text-green-800">New</span>'
+                        }
+                    </td>
+                </tr>
+            `).join('');
+            
+            document.getElementById('previewCount').textContent = 
+                `${parsedEmployees.length} employees found (${newCount} new, ${existingCount} existing)` +
+                (parsedEmployees.length > 10 ? ` - showing first 10` : '');
+            
+            preview.classList.remove('hidden');
+        }
+
+        async function importEmployees() {
+            const skipExisting = document.getElementById('skipExisting').checked;
+            const updateExisting = document.getElementById('updateExisting').checked;
+            
+            let imported = 0;
+            let updated = 0;
+            let skipped = 0;
+            let errors = 0;
+
+            document.getElementById('importBtn').disabled = true;
+            document.getElementById('importBtn').innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Importing...</span>';
+
+            for (const emp of parsedEmployees) {
+                try {
+                    if (emp._exists) {
+                        if (skipExisting) {
+                            skipped++;
+                            continue;
+                        }
+                        if (updateExisting) {
+                            // Update existing
+                            const response = await fetch(`/api/employees/${emp.pin}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    name: emp.name,
+                                    department: emp.department || null,
+                                    position: emp.position || null,
+                                    email: emp.email || null,
+                                    phone: emp.phone || null,
+                                    card_number: emp.card_number || null,
+                                    hire_date: emp.hire_date || null,
+                                    is_active: emp.is_active
+                                })
+                            });
+                            if (response.ok) updated++;
+                            else errors++;
+                        } else {
+                            skipped++;
+                        }
+                    } else {
+                        // Create new
+                        const response = await fetch('/api/employees', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                pin: emp.pin,
+                                name: emp.name,
+                                department: emp.department || null,
+                                position: emp.position || null,
+                                email: emp.email || null,
+                                phone: emp.phone || null,
+                                card_number: emp.card_number || null,
+                                hire_date: emp.hire_date || null,
+                                is_active: emp.is_active !== false
+                            })
+                        });
+                        if (response.ok) imported++;
+                        else errors++;
+                    }
+                } catch (error) {
+                    console.error('Import error:', error);
+                    errors++;
+                }
+            }
+
+            closeImportModal();
+            await loadEmployees();
+            
+            let message = `Import complete: ${imported} added`;
+            if (updated > 0) message += `, ${updated} updated`;
+            if (skipped > 0) message += `, ${skipped} skipped`;
+            if (errors > 0) message += `, ${errors} errors`;
+            
+            showToast(message, errors > 0 ? 'error' : 'success');
         }
     </script>
 </body>

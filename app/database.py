@@ -1,5 +1,5 @@
 """
-Database module for SQLite persistence
+Database module for persistence (Supabase for production, SQLite for development)
 Handles all database operations for attendance system
 """
 import os
@@ -13,8 +13,12 @@ from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
-# Database file path
+# Database file path (SQLite fallback)
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "attendance.db")
+
+# Supabase configuration
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "") or os.getenv("SUPABASE_KEY", "")
 
 
 class Database:
@@ -967,8 +971,600 @@ class Database:
             return [dict(row) for row in cursor.fetchall()]
 
 
+# ==================== SUPABASE DATABASE ====================
+
+class SupabaseDatabase:
+    """Supabase database for persistent cloud storage"""
+    
+    def __init__(self):
+        from supabase import create_client, Client
+        self.client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        logger.info(f"✅ Connected to Supabase: {SUPABASE_URL[:30]}...")
+        self._init_defaults()
+    
+    def _init_defaults(self):
+        """Initialize default data if tables are empty"""
+        try:
+            # Check if time windows exist
+            result = self.client.table("punch_time_windows").select("id").limit(1).execute()
+            if not result.data:
+                self._seed_time_windows()
+            
+            # Check if settings exist
+            result = self.client.table("system_settings").select("key").eq("key", "auto_punch_type_enabled").execute()
+            if not result.data:
+                self._seed_settings()
+            
+            # Check if roles exist
+            result = self.client.table("roles").select("id").limit(1).execute()
+            if not result.data:
+                self._seed_roles()
+        except Exception as e:
+            logger.warning(f"Could not seed defaults: {e}")
+    
+    def _seed_time_windows(self):
+        """Seed default time windows"""
+        now = datetime.now().isoformat()
+        weekdays = "0,1,2,3,4"
+        default_windows = [
+            {"punch_type": "CHECK_IN", "start_time": "06:00", "end_time": "10:00", "days_of_week": weekdays, "priority": 1, "is_active": True, "description": "Morning check-in (Mon-Fri)", "created_at": now, "updated_at": now},
+            {"punch_type": "BREAK_OUT", "start_time": "11:30", "end_time": "12:30", "days_of_week": weekdays, "priority": 2, "is_active": True, "description": "Lunch break start (Mon-Fri)", "created_at": now, "updated_at": now},
+            {"punch_type": "BREAK_IN", "start_time": "12:30", "end_time": "14:00", "days_of_week": weekdays, "priority": 3, "is_active": True, "description": "Lunch break end (Mon-Fri)", "created_at": now, "updated_at": now},
+            {"punch_type": "CHECK_OUT", "start_time": "16:00", "end_time": "20:00", "days_of_week": weekdays, "priority": 4, "is_active": True, "description": "Evening check-out (Mon-Fri)", "created_at": now, "updated_at": now},
+            {"punch_type": "OVERTIME_IN", "start_time": "20:00", "end_time": "22:00", "days_of_week": weekdays, "priority": 5, "is_active": True, "description": "Overtime start (Mon-Fri)", "created_at": now, "updated_at": now},
+            {"punch_type": "OVERTIME_OUT", "start_time": "22:00", "end_time": "23:59", "days_of_week": weekdays, "priority": 6, "is_active": True, "description": "Overtime end (Mon-Fri)", "created_at": now, "updated_at": now},
+        ]
+        try:
+            self.client.table("punch_time_windows").insert(default_windows).execute()
+            logger.info("✅ Default time windows created")
+        except Exception as e:
+            logger.warning(f"Could not create time windows: {e}")
+    
+    def _seed_settings(self):
+        """Seed default settings"""
+        now = datetime.now().isoformat()
+        settings = [
+            {"key": "auto_punch_type_enabled", "value": "true", "description": "Enable automatic punch type based on time windows", "updated_at": now},
+            {"key": "work_start_time", "value": "09:00", "description": "Standard work start time for late calculation", "updated_at": now},
+            {"key": "work_end_time", "value": "17:00", "description": "Standard work end time", "updated_at": now},
+            {"key": "overtime_threshold_hours", "value": "8", "description": "Hours after which overtime starts", "updated_at": now},
+        ]
+        try:
+            self.client.table("system_settings").insert(settings).execute()
+            logger.info("✅ Default settings created")
+        except Exception as e:
+            logger.warning(f"Could not create settings: {e}")
+    
+    def _seed_roles(self):
+        """Seed default roles"""
+        now = datetime.now().isoformat()
+        roles = [
+            {"name": "admin", "description": "Full system access", "permissions": ["*"], "created_at": now, "updated_at": now},
+            {"name": "hr_manager", "description": "HR and employee management", "permissions": ["employees:read", "employees:write", "employees:delete", "attendance:read", "reports:read", "reports:export"], "created_at": now, "updated_at": now},
+            {"name": "department_manager", "description": "Department-level access", "permissions": ["employees:read", "attendance:read", "reports:read"], "created_at": now, "updated_at": now},
+            {"name": "employee", "description": "View own attendance", "permissions": ["attendance:read_own"], "created_at": now, "updated_at": now},
+            {"name": "viewer", "description": "Read-only access", "permissions": ["attendance:read", "reports:read"], "created_at": now, "updated_at": now},
+        ]
+        try:
+            self.client.table("roles").insert(roles).execute()
+            logger.info("✅ Default roles created")
+        except Exception as e:
+            logger.warning(f"Could not create roles: {e}")
+
+    # ==================== EMPLOYEES ====================
+
+    def get_employee(self, pin: str) -> Optional[dict]:
+        """Get employee by PIN"""
+        result = self.client.table("employees").select("*").eq("pin", pin).execute()
+        return result.data[0] if result.data else None
+
+    def get_all_employees(self) -> List[dict]:
+        """Get all employees"""
+        result = self.client.table("employees").select("*").order("pin").execute()
+        return result.data or []
+
+    def create_employee(self, employee: dict) -> dict:
+        """Create a new employee"""
+        now = datetime.now().isoformat()
+        data = {
+            "pin": employee.get("pin"),
+            "name": employee.get("name"),
+            "email": employee.get("email"),
+            "phone": employee.get("phone"),
+            "department": employee.get("department"),
+            "position": employee.get("position"),
+            "card_number": employee.get("card_number"),
+            "is_active": employee.get("is_active", True),
+            "hire_date": employee.get("hire_date"),
+            "notes": employee.get("notes"),
+            "created_at": now,
+            "updated_at": now
+        }
+        result = self.client.table("employees").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    def update_employee(self, pin: str, updates: dict) -> Optional[dict]:
+        """Update an employee"""
+        updates["updated_at"] = datetime.now().isoformat()
+        # Remove fields that shouldn't be updated
+        for key in ["id", "pin", "created_at"]:
+            updates.pop(key, None)
+        
+        self.client.table("employees").update(updates).eq("pin", pin).execute()
+        return self.get_employee(pin)
+
+    def delete_employee(self, pin: str) -> bool:
+        """Delete an employee"""
+        result = self.client.table("employees").delete().eq("pin", pin).execute()
+        return len(result.data) > 0 if result.data else False
+
+    # ==================== ATTENDANCE LOGS ====================
+
+    def add_attendance_log(self, log: dict) -> dict:
+        """Add an attendance log entry"""
+        now = datetime.now().isoformat()
+        
+        # Look up employee name if we have PIN
+        if log.get("pin"):
+            employee = self.get_employee(log["pin"])
+            if employee:
+                log["employee_name"] = employee.get("name", f"Employee {log['pin']}")
+                log["department"] = employee.get("department", "")
+        
+        data = {
+            "pin": log.get("pin"),
+            "employee_name": log.get("employee_name"),
+            "department": log.get("department"),
+            "device_sn": log.get("device_sn"),
+            "punch_time": log.get("punch_time"),
+            "punch_type": log.get("punch_type"),
+            "verify_method": log.get("verify_method"),
+            "work_code": log.get("work_code"),
+            "raw_data": log.get("raw_data"),
+            "created_at": now
+        }
+        result = self.client.table("attendance_logs").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    def get_attendance_logs(
+        self, 
+        date: Optional[str] = None,
+        pin: Optional[str] = None,
+        limit: int = 100
+    ) -> List[dict]:
+        """Get attendance logs with optional filters"""
+        query = self.client.table("attendance_logs").select("*")
+        
+        if date:
+            query = query.gte("punch_time", f"{date}T00:00:00").lte("punch_time", f"{date}T23:59:59")
+        if pin:
+            query = query.eq("pin", pin)
+        
+        result = query.order("punch_time", desc=True).limit(limit).execute()
+        return result.data or []
+
+    def get_attendance_stats(self, date: str) -> dict:
+        """Get attendance statistics for a specific date"""
+        logs = self.get_attendance_logs(date=date, limit=1000)
+        
+        employees = {}
+        for log in logs:
+            pin = log.get("pin", "Unknown")
+            if pin not in employees:
+                employees[pin] = {
+                    "pin": pin,
+                    "name": log.get("employee_name", f"Employee {pin}"),
+                    "check_ins": [],
+                    "check_outs": []
+                }
+            
+            punch_type = log.get("punch_type", "")
+            punch_time = log.get("punch_time", "").split("T")[-1][:8] if log.get("punch_time") else ""
+            
+            if "IN" in punch_type.upper():
+                employees[pin]["check_ins"].append(punch_time)
+            elif "OUT" in punch_type.upper():
+                employees[pin]["check_outs"].append(punch_time)
+        
+        present = 0
+        late = 0
+        work_start = "09:00:00"
+        
+        for emp in employees.values():
+            if emp["check_ins"]:
+                present += 1
+                first_in = min(emp["check_ins"])
+                if first_in > work_start:
+                    late += 1
+        
+        return {
+            "date": date,
+            "total_employees": len(employees),
+            "present": present,
+            "late": late,
+            "total_punches": len(logs),
+            "employees": list(employees.values())
+        }
+
+    # ==================== DEVICES ====================
+
+    def register_device(self, device: dict) -> dict:
+        """Register or update a device"""
+        now = datetime.now().isoformat()
+        sn = device.get("serial_number")
+        
+        # Check if device exists
+        existing = self.client.table("devices").select("serial_number").eq("serial_number", sn).execute()
+        
+        if existing.data:
+            # Update existing
+            self.client.table("devices").update({
+                "status": "online",
+                "last_seen": now,
+                "updated_at": now
+            }).eq("serial_number", sn).execute()
+        else:
+            # Insert new
+            self.client.table("devices").insert({
+                "serial_number": sn,
+                "name": device.get("name"),
+                "location": device.get("location"),
+                "status": "online",
+                "last_seen": now,
+                "created_at": now,
+                "updated_at": now
+            }).execute()
+        
+        device["last_seen"] = now
+        device["status"] = "online"
+        return device
+
+    def get_devices(self) -> List[dict]:
+        """Get all registered devices"""
+        result = self.client.table("devices").select("*").order("last_seen", desc=True).execute()
+        return result.data or []
+
+    def update_device_status(self, serial_number: str, status: str = "online"):
+        """Update device status and last seen time"""
+        now = datetime.now().isoformat()
+        self.client.table("devices").update({
+            "status": status,
+            "last_seen": now,
+            "updated_at": now
+        }).eq("serial_number", serial_number).execute()
+
+    # ==================== PUNCH TIME WINDOWS ====================
+
+    def get_time_windows(self, active_only: bool = True) -> List[dict]:
+        """Get all punch time windows"""
+        query = self.client.table("punch_time_windows").select("*")
+        if active_only:
+            query = query.eq("is_active", True)
+        result = query.order("priority").execute()
+        return result.data or []
+
+    def get_time_window(self, window_id: int) -> Optional[dict]:
+        """Get a specific time window by ID"""
+        result = self.client.table("punch_time_windows").select("*").eq("id", window_id).execute()
+        return result.data[0] if result.data else None
+
+    def create_time_window(self, window: dict) -> dict:
+        """Create a new time window"""
+        now = datetime.now().isoformat()
+        days_of_week = window.get("days_of_week", "0,1,2,3,4,5,6")
+        if isinstance(days_of_week, list):
+            days_of_week = ",".join(str(d) for d in days_of_week)
+        
+        data = {
+            "punch_type": window.get("punch_type"),
+            "start_time": window.get("start_time"),
+            "end_time": window.get("end_time"),
+            "days_of_week": days_of_week,
+            "priority": window.get("priority", 0),
+            "is_active": window.get("is_active", True),
+            "description": window.get("description"),
+            "created_at": now,
+            "updated_at": now
+        }
+        result = self.client.table("punch_time_windows").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    def update_time_window(self, window_id: int, updates: dict) -> Optional[dict]:
+        """Update a time window"""
+        updates["updated_at"] = datetime.now().isoformat()
+        
+        if "days_of_week" in updates and isinstance(updates["days_of_week"], list):
+            updates["days_of_week"] = ",".join(str(d) for d in updates["days_of_week"])
+        
+        for key in ["id", "created_at"]:
+            updates.pop(key, None)
+        
+        self.client.table("punch_time_windows").update(updates).eq("id", window_id).execute()
+        return self.get_time_window(window_id)
+
+    def delete_time_window(self, window_id: int) -> bool:
+        """Delete a time window"""
+        result = self.client.table("punch_time_windows").delete().eq("id", window_id).execute()
+        return len(result.data) > 0 if result.data else False
+
+    def determine_punch_type_by_time(self, punch_time: str, check_date: str = None) -> Optional[str]:
+        """Determine punch type based on time of day and day of week"""
+        if not punch_time or punch_time == "0" or len(str(punch_time)) < 5:
+            return None
+        
+        punch_time = str(punch_time)
+        
+        if " " in punch_time:
+            date_str, time_str = punch_time.split(" ", 1)
+        else:
+            time_str = punch_time
+            date_str = check_date or datetime.now().strftime("%Y-%m-%d")
+        
+        if ":" not in time_str:
+            return None
+        
+        try:
+            punch_date = datetime.strptime(date_str, "%Y-%m-%d")
+            day_of_week = punch_date.weekday()
+        except:
+            day_of_week = datetime.now().weekday()
+        
+        time_parts = time_str.split(":")
+        if len(time_parts) < 2:
+            return None
+        current_time = f"{time_parts[0]}:{time_parts[1]}"
+        
+        windows = self.get_time_windows(active_only=True)
+        
+        for window in windows:
+            start = window["start_time"]
+            end = window["end_time"]
+            
+            days_str = window.get("days_of_week", "0,1,2,3,4,5,6")
+            if days_str:
+                applicable_days = [int(d.strip()) for d in days_str.split(",") if d.strip()]
+                if day_of_week not in applicable_days:
+                    continue
+            
+            if start <= end:
+                if start <= current_time <= end:
+                    return window["punch_type"]
+            else:
+                if current_time >= start or current_time <= end:
+                    return window["punch_type"]
+        
+        return None
+
+    # ==================== SYSTEM SETTINGS ====================
+
+    def get_setting(self, key: str) -> Optional[str]:
+        """Get a system setting value"""
+        result = self.client.table("system_settings").select("value").eq("key", key).execute()
+        return result.data[0]["value"] if result.data else None
+
+    def get_all_settings(self) -> Dict[str, Any]:
+        """Get all system settings as a dictionary"""
+        result = self.client.table("system_settings").select("key, value, description").execute()
+        return {row["key"]: {"value": row["value"], "description": row["description"]} for row in (result.data or [])}
+
+    def set_setting(self, key: str, value: str, description: str = None) -> dict:
+        """Set a system setting (upsert)"""
+        now = datetime.now().isoformat()
+        
+        existing = self.client.table("system_settings").select("key").eq("key", key).execute()
+        
+        if existing.data:
+            update_data = {"value": value, "updated_at": now}
+            if description:
+                update_data["description"] = description
+            self.client.table("system_settings").update(update_data).eq("key", key).execute()
+        else:
+            self.client.table("system_settings").insert({
+                "key": key,
+                "value": value,
+                "description": description,
+                "updated_at": now
+            }).execute()
+        
+        return {"key": key, "value": value, "updated_at": now}
+
+    def is_auto_punch_type_enabled(self) -> bool:
+        """Check if automatic punch type determination is enabled"""
+        value = self.get_setting("auto_punch_type_enabled")
+        return value and value.lower() == "true"
+
+    # ==================== RBAC - USERS ====================
+
+    def create_user(self, user: dict) -> dict:
+        """Create a new user"""
+        now = datetime.now().isoformat()
+        data = {
+            "username": user.get("username"),
+            "email": user.get("email"),
+            "password_hash": user.get("password_hash"),
+            "full_name": user.get("full_name"),
+            "department": user.get("department"),
+            "employee_pin": user.get("employee_pin"),
+            "is_active": user.get("is_active", True),
+            "is_superuser": user.get("is_superuser", False),
+            "created_at": now,
+            "updated_at": now
+        }
+        result = self.client.table("users").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    def get_user_by_username(self, username: str) -> Optional[dict]:
+        """Get user by username"""
+        result = self.client.table("users").select("*").eq("username", username).execute()
+        return result.data[0] if result.data else None
+
+    def get_user_by_email(self, email: str) -> Optional[dict]:
+        """Get user by email"""
+        result = self.client.table("users").select("*").eq("email", email).execute()
+        return result.data[0] if result.data else None
+
+    def get_user_by_id(self, user_id: int) -> Optional[dict]:
+        """Get user by ID"""
+        result = self.client.table("users").select("*").eq("id", user_id).execute()
+        return result.data[0] if result.data else None
+
+    def get_all_users(self) -> List[dict]:
+        """Get all users"""
+        result = self.client.table("users").select("*").order("username").execute()
+        return result.data or []
+
+    def update_user(self, user_id: int, updates: dict) -> Optional[dict]:
+        """Update a user"""
+        updates["updated_at"] = datetime.now().isoformat()
+        for key in ["id", "created_at"]:
+            updates.pop(key, None)
+        
+        self.client.table("users").update(updates).eq("id", user_id).execute()
+        return self.get_user_by_id(user_id)
+
+    def update_last_login(self, user_id: int):
+        """Update user's last login timestamp"""
+        now = datetime.now().isoformat()
+        self.client.table("users").update({"last_login": now}).eq("id", user_id).execute()
+
+    def delete_user(self, user_id: int) -> bool:
+        """Delete a user"""
+        result = self.client.table("users").delete().eq("id", user_id).execute()
+        return len(result.data) > 0 if result.data else False
+
+    # ==================== RBAC - ROLES ====================
+
+    def get_role_by_name(self, name: str) -> Optional[dict]:
+        """Get role by name"""
+        result = self.client.table("roles").select("*").eq("name", name).execute()
+        return result.data[0] if result.data else None
+
+    def get_role_by_id(self, role_id: int) -> Optional[dict]:
+        """Get role by ID"""
+        result = self.client.table("roles").select("*").eq("id", role_id).execute()
+        return result.data[0] if result.data else None
+
+    def get_all_roles(self) -> List[dict]:
+        """Get all roles"""
+        result = self.client.table("roles").select("*").order("name").execute()
+        return result.data or []
+
+    def create_role(self, role: dict) -> dict:
+        """Create a new role"""
+        now = datetime.now().isoformat()
+        data = {
+            "name": role.get("name"),
+            "description": role.get("description"),
+            "permissions": role.get("permissions", []),
+            "created_at": now,
+            "updated_at": now
+        }
+        result = self.client.table("roles").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    # ==================== RBAC - USER ROLES ====================
+
+    def assign_role_to_user(self, user_id: int, role_id: int):
+        """Assign a role to a user"""
+        now = datetime.now().isoformat()
+        # Check if already exists
+        existing = self.client.table("user_roles").select("*").eq("user_id", user_id).eq("role_id", role_id).execute()
+        if not existing.data:
+            self.client.table("user_roles").insert({
+                "user_id": user_id,
+                "role_id": role_id,
+                "assigned_at": now
+            }).execute()
+
+    def remove_role_from_user(self, user_id: int, role_id: int):
+        """Remove a role from a user"""
+        self.client.table("user_roles").delete().eq("user_id", user_id).eq("role_id", role_id).execute()
+
+    def get_user_roles(self, user_id: int) -> List[dict]:
+        """Get all roles assigned to a user"""
+        result = self.client.table("user_roles").select("role_id").eq("user_id", user_id).execute()
+        roles = []
+        for ur in (result.data or []):
+            role = self.get_role_by_id(ur["role_id"])
+            if role:
+                roles.append(role)
+        return roles
+
+    def get_user_permissions(self, user_id: int) -> List[str]:
+        """Get all permissions for a user (aggregated from all roles)"""
+        roles = self.get_user_roles(user_id)
+        permissions = set()
+        for role in roles:
+            perms = role.get("permissions", [])
+            if isinstance(perms, str):
+                perms = json.loads(perms) if perms else []
+            for perm in perms:
+                if perm == "*":
+                    return ["*"]
+                permissions.add(perm)
+        return list(permissions)
+
+    def user_has_permission(self, user_id: int, permission: str) -> bool:
+        """Check if user has a specific permission"""
+        user = self.get_user_by_id(user_id)
+        if user and user.get("is_superuser"):
+            return True
+        
+        permissions = self.get_user_permissions(user_id)
+        if "*" in permissions:
+            return True
+        
+        for perm in permissions:
+            if perm == permission:
+                return True
+            if perm.endswith(":*") and permission.startswith(perm[:-1]):
+                return True
+        
+        return False
+
+    # ==================== RBAC - AUDIT LOGS ====================
+
+    def add_audit_log(self, log: dict):
+        """Add an audit log entry"""
+        now = datetime.now().isoformat()
+        self.client.table("audit_logs").insert({
+            "user_id": log.get("user_id"),
+            "action": log.get("action"),
+            "resource": log.get("resource"),
+            "resource_id": log.get("resource_id"),
+            "details": log.get("details"),
+            "ip_address": log.get("ip_address"),
+            "user_agent": log.get("user_agent"),
+            "created_at": now
+        }).execute()
+
+    def get_audit_logs(self, user_id: Optional[int] = None, limit: int = 100) -> List[dict]:
+        """Get audit logs, optionally filtered by user"""
+        query = self.client.table("audit_logs").select("*")
+        if user_id:
+            query = query.eq("user_id", user_id)
+        result = query.order("created_at", desc=True).limit(limit).execute()
+        return result.data or []
+
+
 # Singleton instance
-@lru_cache()
-def get_database() -> Database:
-    """Get the database instance (singleton)"""
-    return Database()
+_database_instance = None
+
+def get_database():
+    """Get the database instance (singleton) - uses Supabase if configured, else SQLite"""
+    global _database_instance
+    
+    if _database_instance is None:
+        if SUPABASE_URL and SUPABASE_KEY:
+            try:
+                _database_instance = SupabaseDatabase()
+                logger.info("🚀 Using Supabase for database (persistent cloud storage)")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to connect to Supabase: {e}")
+                logger.info("📁 Falling back to SQLite (local storage)")
+                _database_instance = Database()
+        else:
+            logger.info("📁 Using SQLite for database (no Supabase credentials)")
+            _database_instance = Database()
+    
+    return _database_instance
