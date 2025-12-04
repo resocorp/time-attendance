@@ -437,6 +437,9 @@ async def cdata(request: Request):
     return "OK"
 
 
+# Track last time sync for each device
+device_time_sync = {}
+
 @app.api_route("/iclock/getrequest", methods=["GET", "POST"], response_class=PlainTextResponse)
 async def getrequest(request: Request):
     """
@@ -446,6 +449,7 @@ async def getrequest(request: Request):
     - USER ADD PIN=1001\tName=John Doe\tPrivilege=0\tCard=12345678
     - USER DEL PIN=1002
     - DATA QUERY USERINFO PIN=1001
+    - INFO STIME <datetime> - Sync device time
     """
     params = dict(request.query_params)
     SN = params.get("SN", "UNKNOWN")
@@ -461,6 +465,18 @@ async def getrequest(request: Request):
         command = device_commands[SN].pop(0)
         logger.info(f"📤 Sending command to {SN}: {command}")
         return command
+    
+    # Check if device needs time sync (every hour or first connection)
+    now = datetime.now()
+    last_sync = device_time_sync.get(SN)
+    needs_sync = last_sync is None or (now - last_sync).total_seconds() > 3600  # 1 hour
+    
+    if needs_sync:
+        local_time = get_local_time()
+        time_str = local_time.strftime("%Y-%m-%d %H:%M:%S")
+        device_time_sync[SN] = now
+        logger.info(f"🕐 Sending time sync to {SN}: {time_str}")
+        return f"C:ID1:STIME {time_str}"
     
     # No commands
     return "OK"
