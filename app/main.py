@@ -1271,33 +1271,39 @@ async def iclock_catch_all(request: Request, path: str):
             return command
         return "OK"
     
-    # Parse attendance data from body if present
-    if body_text:
+    # Only parse attendance data for ATTLOG table, skip OPERLOG and others
+    if body_text and table and table.upper() == "ATTLOG":
         for line in body_text.strip().splitlines():
             if line.strip():
-                log_data = parse_log_line(line)
-                log_data["device_sn"] = SN
-                log_data["received_at"] = datetime.now().isoformat()
-                log_data["raw"] = line
-                log_data["source"] = "catch_all"
-                attendance_logs.append(log_data)
-                logger.info(f"   ✅ LOGGED: {log_data}")
-                
-                # Save to SQLite
-                if log_data.get("PIN"):
-                    try:
-                        db.add_attendance_log({
-                            "pin": log_data.get("PIN"),
-                            "device_sn": SN,
-                            "punch_time": log_data.get("DateTime", datetime.now().isoformat()).replace(" ", "T"),
-                            "punch_type": log_data.get("punch_type"),
-                            "verify_method": log_data.get("verify_method"),
-                            "work_code": log_data.get("WorkCode"),
-                            "raw_data": log_data
-                        })
-                        logger.info(f"   💾 Saved to SQLite")
-                    except Exception as e:
-                        logger.error(f"   ❌ Failed to save to SQLite: {e}")
+                try:
+                    log_data = parse_log_line(line)
+                    log_data["device_sn"] = SN
+                    log_data["received_at"] = datetime.now().isoformat()
+                    log_data["raw"] = line
+                    log_data["source"] = "catch_all"
+                    attendance_logs.append(log_data)
+                    logger.info(f"   ✅ LOGGED: {log_data}")
+                    
+                    # Save to SQLite
+                    if log_data.get("PIN") and log_data.get("PIN") != "OPLOG 0":
+                        try:
+                            db.add_attendance_log({
+                                "pin": log_data.get("PIN"),
+                                "device_sn": SN,
+                                "punch_time": log_data.get("DateTime", datetime.now().isoformat()).replace(" ", "T"),
+                                "punch_type": log_data.get("punch_type"),
+                                "verify_method": log_data.get("verify_method"),
+                                "work_code": log_data.get("WorkCode"),
+                                "raw_data": log_data
+                            })
+                            logger.info(f"   💾 Saved to SQLite")
+                        except Exception as e:
+                            logger.error(f"   ❌ Failed to save to SQLite: {e}")
+                except Exception as e:
+                    logger.error(f"   ❌ Failed to parse line: {line} - Error: {e}")
+    elif body_text and table:
+        # Log other table types without parsing as attendance
+        logger.info(f"   📦 Received {table} data (not attendance): {body_text[:200]}")
     
     return "OK"
 

@@ -608,12 +608,23 @@ class Database:
         
         Days of week: 0=Monday, 1=Tuesday, 2=Wednesday, 3=Thursday, 4=Friday, 5=Saturday, 6=Sunday
         """
+        # Validate punch_time - must be a valid datetime or time string
+        if not punch_time or punch_time == "0" or len(str(punch_time)) < 5:
+            # Invalid time, return None to use device status instead
+            return None
+        
+        punch_time = str(punch_time)
+        
         # Extract date and time portions
         if " " in punch_time:
             date_str, time_str = punch_time.split(" ", 1)
         else:
             time_str = punch_time
             date_str = check_date or datetime.now().strftime("%Y-%m-%d")
+        
+        # Validate time_str format (should contain ":")
+        if ":" not in time_str:
+            return None
         
         # Get day of week (0=Monday, 6=Sunday)
         try:
@@ -624,6 +635,8 @@ class Database:
         
         # Get HH:MM format
         time_parts = time_str.split(":")
+        if len(time_parts) < 2:
+            return None
         current_time = f"{time_parts[0]}:{time_parts[1]}"
         
         # Get active time windows
